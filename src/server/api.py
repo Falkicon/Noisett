@@ -11,10 +11,12 @@ Usage:
     uvicorn src.server.api:app --host 0.0.0.0 --port 8000
 """
 
+import asyncio
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -40,6 +42,64 @@ class CancelRequest(BaseModel):
     """Request body for job cancellation."""
     
     reason: Optional[str] = Field(default=None, description="Cancellation reason")
+
+
+# --- Background Task for Job Processing ---
+
+
+async def process_job(job_id: str):
+    """Process a job in the background using the configured ML backend."""
+    from src.commands.asset import get_job, update_job
+    from src.core.types import JobStatus
+    
+    # Get the job
+    job = get_job(job_id)
+    if not job or job.status != JobStatus.QUEUED:
+        return
+    
+    # Update to processing
+    job.status = JobStatus.PROCESSING
+    job.progress = 0.1
+    update_job(job)
+    
+    try:
+        # Get the appropriate generator based on ML_BACKEND env var
+        backend = os.environ.get("ML_BACKEND", "mock")
+        
+        if backend == "mock":
+            from src.ml import MockGenerator
+            generator = MockGenerator()
+        elif backend == "huggingface":
+            from src.ml import HuggingFaceGenerator
+            generator = HuggingFaceGenerator()
+        else:
+            from src.ml import MockGenerator
+            generator = MockGenerator()
+        
+        # Update progress
+        job.progress = 0.3
+        update_job(job)
+        
+        # Generate images
+        images = await generator.generate(
+            prompt=job.prompt,
+            asset_type=job.asset_type,
+            model=job.model,
+            quality=job.quality,
+            count=job.count,
+        )
+        
+        # Update job with results
+        job.status = JobStatus.COMPLETED
+        job.progress = 1.0
+        job.images = images
+        update_job(job)
+        
+    except Exception as e:
+        # Mark job as failed
+        job.status = JobStatus.FAILED
+        job.error_message = str(e)
+        update_job(job)
 
 
 # --- App Setup ---
@@ -105,10 +165,10 @@ async def health_check():
 
 
 @app.post("/api/generate")
-async def generate_asset(request: GenerateRequest):
+async def generate_asset(request: GenerateRequest, background_tasks: BackgroundTasks):
     """Generate brand-aligned images from a text prompt.
     
-    Creates a generation job and returns immediately with job ID.
+    Creates a generation job and starts processing in background.
     Poll /api/jobs/{id} for completion.
     """
     from src.commands.asset import AssetGenerateInput, generate
@@ -122,6 +182,11 @@ async def generate_asset(request: GenerateRequest):
             count=request.count,
         )
         result = await generate(input_data)
+        
+        # Start processing the job in background
+        if result.success and result.data:
+            background_tasks.add_task(process_job, result.data.job.id)
+        
         return result.model_dump(exclude_none=True)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
