@@ -2,22 +2,37 @@
 
 > **Project:** Noisett (Brand Asset Generator)
 > **Architecture:** Agent-First Development (AFD)
-> **Status:** Phase 1-5 Complete ✅ | Phase 6 (Deployment) In Progress 🔄
+> **Status:** All Phases Complete ✅ | Live at Azure Container Apps
 
 ---
 
 ## Implementation Progress
 
-| Phase | Component   | Status     | Notes                           |
-| ----- | ----------- | ---------- | ------------------------------- |
-| 1     | Commands    | ✅ Done    | 7 commands implemented          |
-| 2     | MCP Server  | ✅ Done    | FastMCP integration             |
-| 3     | ML Pipeline | ✅ Done    | Mock + HuggingFace backends     |
-| 4     | REST API    | ✅ Done    | FastAPI, 8 endpoints            |
-| 5     | Web UI      | ✅ Done    | Vanilla JS frontend             |
-| 6     | Deployment  | 🔄 Started | Dockerfile, CI/CD, Azure config |
+| Phase | Component   | Status  | Notes                           |
+| ----- | ----------- | ------- | ------------------------------- |
+| 1     | Commands    | ✅ Done | 7 commands implemented          |
+| 2     | MCP Server  | ✅ Done | FastMCP integration             |
+| 3     | ML Pipeline | ✅ Done | Mock + HuggingFace backends     |
+| 4     | REST API    | ✅ Done | FastAPI, 8 endpoints            |
+| 5     | Web UI      | ✅ Done | Vanilla JS frontend             |
+| 6     | Deployment  | ✅ Done | Azure Container Apps (CPU/mock) |
 
 **Tests:** 29 passing
+
+---
+
+## Live Deployment
+
+| Resource           | Value                                                                |
+| ------------------ | -------------------------------------------------------------------- |
+| **Live URL**       | https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/ |
+| **Container App**  | noisett (East US)                                                    |
+| **Registry**       | noisettacr.azurecr.io                                                |
+| **Resource Group** | noisett-rg                                                           |
+| **Version**        | v0.6.2                                                               |
+| **Backend**        | ML_BACKEND=mock (placeholder images for testing)                     |
+
+> **Note:** Currently running CPU-only with mock backend. GPU quota request pending for real inference.
 
 ---
 
@@ -130,9 +145,11 @@ All commands return `CommandResult` with UX-enabling fields:
 | ML Backends | Mock, HuggingFace (FLUX)      | ✅ Implemented |
 | REST API    | FastAPI                       | ✅ Implemented |
 | Web UI      | Vanilla JS/HTML/CSS           | ✅ Implemented |
+| Compute     | Azure Container Apps (CPU)    | ✅ Deployed    |
+| Registry    | Azure Container Registry      | ✅ Deployed    |
 | Auth        | Microsoft Entra ID            | ⏳ Pending     |
 | Storage     | Azure Blob                    | ⏳ Pending     |
-| Compute     | Azure Container Apps (GPU)    | ⏳ Pending     |
+| GPU         | NC-series (real inference)    | ⏳ Pending     |
 
 ---
 
@@ -200,16 +217,16 @@ noisett/
 │   │   └── 04-deployment.md     # Azure deployment
 │   └── Archive/                 # Legacy specs (pre-AFD)
 │
-├── infrastructure/              # Azure deployment files 🔄
+├── infrastructure/              # Azure deployment files ✅
 │   ├── container-app.yaml       # Container Apps config
 │   └── setup-azure.sh           # Provisioning script
 │
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml           # CI/CD pipeline 🔄
+│       └── deploy.yml           # CI/CD pipeline ✅
 │
-├── Dockerfile                   # Production container 🔄
-├── requirements.txt             # Production dependencies 🔄
+├── Dockerfile                   # Production container ✅
+├── requirements.txt             # Production dependencies ✅
 │
 ├── src/
 │   ├── __init__.py
@@ -292,6 +309,8 @@ noisett/
 - [x] 29 tests passing
 - [x] REST API exposes commands (8 endpoints)
 - [x] Web UI is thin wrapper with no business logic
+- [x] Deployed to Azure Container Apps
+- [x] Can generate images via CLI, MCP, and Web UI (same commands)
+- [x] Architecture allows swapping UI without touching commands
 - [ ] MCP server discoverable in VS Code/Cursor
-- [ ] Can generate images via CLI, MCP, and Web UI (same commands)
-- [ ] Architecture allows swapping UI without touching commands
+- [ ] GPU quota approved for real inference

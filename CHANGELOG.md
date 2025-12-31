@@ -13,19 +13,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Microsoft Entra ID authentication
 - Azure Blob storage integration
 - Application Insights monitoring
+- GPU quota approval for real inference
 
 ---
 
-## [0.6.0] - 2025-01-03
+## [0.6.2] - 2025-12-31
+
+### Fixed
+
+- Fixed JobStatus enum value (`COMPLETE` not `COMPLETED`)
+- Background job processing now correctly marks jobs as complete
+
+---
+
+## [0.6.1] - 2025-12-31
 
 ### Added
 
-- **Deployment Infrastructure** (Phase 6 - In Progress)
+- Background job processing in FastAPI (`process_job` async function)
+- Jobs now automatically transition from QUEUED → PROCESSING → COMPLETE
+
+### Fixed
+
+- Fixed issue where jobs were created but never processed
+- Generation no longer stuck on "Generating..." indefinitely
+
+---
+
+## [0.6.0] - 2025-12-31
+
+### Added
+
+- **Deployment Infrastructure** (Phase 6 Complete ✅)
   - Dockerfile with PyTorch CUDA base image
   - requirements.txt with production dependencies
   - GitHub Actions CI/CD workflow (`deploy.yml`)
   - Azure Container Apps YAML configuration
   - Infrastructure setup script (`setup-azure.sh`)
+
+### Deployed
+
+- **Live URL:** https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/
+- **Container Registry:** noisettacr.azurecr.io
+- **Container App:** noisett (East US, CPU-only)
+- **Resource Group:** noisett-rg
+- **Backend:** ML_BACKEND=mock (placeholder images for testing)
 
 ### Changed
 
