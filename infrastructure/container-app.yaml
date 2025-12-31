@@ -1,0 +1,96 @@
+# Azure Container App configuration for Noisett
+# GPU-enabled deployment with scale-to-zero
+
+name: ca-noisett
+location: eastus
+resourceGroup: rg-noisett
+
+properties:
+  environmentId: /subscriptions/{subscription-id}/resourceGroups/rg-noisett/providers/Microsoft.App/managedEnvironments/cae-noisett
+
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8000
+      transport: http
+      allowInsecure: false
+
+    secrets:
+      - name: acr-password
+        value: "{ACR_PASSWORD}"
+      - name: azure-storage-connection
+        value: "{AZURE_STORAGE_CONNECTION_STRING}"
+      - name: azure-ad-client-id
+        value: "{AZURE_AD_CLIENT_ID}"
+      - name: azure-ad-tenant-id
+        value: "{AZURE_AD_TENANT_ID}"
+      - name: appinsights-connection
+        value: "{APPLICATIONINSIGHTS_CONNECTION_STRING}"
+
+    registries:
+      - server: crnoisett.azurecr.io
+        username: crnoisett
+        passwordSecretRef: acr-password
+
+  template:
+    containers:
+      - name: noisett
+        image: crnoisett.azurecr.io/noisett:latest
+
+        resources:
+          cpu: 4
+          memory: 16Gi
+          gpu:
+            type: nvidia.com/gpu
+            count: 1
+
+        env:
+          - name: AZURE_STORAGE_CONNECTION_STRING
+            secretRef: azure-storage-connection
+          - name: AZURE_AD_CLIENT_ID
+            secretRef: azure-ad-client-id
+          - name: AZURE_AD_TENANT_ID
+            secretRef: azure-ad-tenant-id
+          - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+            secretRef: appinsights-connection
+          - name: NOISETT_ENV
+            value: production
+          - name: HF_HOME
+            value: /app/models
+
+        volumeMounts:
+          - volumeName: models-volume
+            mountPath: /app/models
+          - volumeName: generated-volume
+            mountPath: /app/generated
+
+        probes:
+          liveness:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readiness:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+    volumes:
+      - name: models-volume
+        storageType: AzureFile
+        storageName: models-share
+      - name: generated-volume
+        storageType: AzureFile
+        storageName: generated-share
+
+    scale:
+      minReplicas: 0
+      maxReplicas: 2
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "5"

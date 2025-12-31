@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Noisett - Brand Asset Generator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="header-logo">🎨</span>
+        <h1 class="header-title">Brand Asset Generator</h1>
+      </div>
+      <div class="header-user">
+        <span id="user-name">Guest</span>
+        <button id="sign-out-btn" class="btn btn-text hidden">Sign out</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Input Section -->
+      <section id="input-section" class="section section-input">
+        <h2 class="section-title">Describe what you need</h2>
+
+        <div class="form-group">
+          <label for="prompt-input" class="label">Prompt</label>
+          <textarea
+            id="prompt-input"
+            class="input input-textarea"
+            placeholder="e.g., A person collaborating with AI on a creative project"
+            maxlength="500"
+            rows="3"
+          ></textarea>
+          <span id="char-count" class="char-count">0/500</span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="asset-type" class="label">Asset type</label>
+            <select id="asset-type" class="input input-select">
+              <option value="product">Product Illustrations</option>
+              <option value="icons">Icons (Fluent 2)</option>
+              <option value="logo">Logo Illustrations</option>
+              <option value="premium">Premium Illustrations</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="quality" class="label">Quality</label>
+            <select id="quality" class="input input-select">
+              <option value="draft">Draft (~10 sec)</option>
+              <option value="standard" selected>Standard (~25 sec)</option>
+              <option value="high">High (~45 sec)</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="generate-btn" class="btn btn-primary btn-large">
+          Generate
+        </button>
+
+        <p class="tip">
+          💡 <strong>Tip:</strong> Be specific about the subject, composition,
+          and style you want. Press Ctrl+Enter to generate.
+        </p>
+      </section>
+
+      <!-- Loading Section (hidden by default) -->
+      <section id="loading-section" class="section section-loading hidden">
+        <div class="loading-content">
+          <div class="spinner"></div>
+          <h2 class="loading-title">Generating...</h2>
+          <p class="loading-subtitle">
+            Creating <span id="loading-count">4</span> variations
+          </p>
+          <div class="progress-bar">
+            <div
+              id="progress-fill"
+              class="progress-fill"
+              style="width: 0%"
+            ></div>
+          </div>
+          <p id="progress-text" class="progress-text">0% complete</p>
+          <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </section>
+
+      <!-- Results Section (hidden by default) -->
+      <section id="results-section" class="section section-results hidden">
+        <div class="results-header">
+          <h2 class="section-title">Results</h2>
+          <p id="results-prompt" class="results-prompt"></p>
+        </div>
+
+        <div id="image-grid" class="image-grid">
+          <!-- Images injected by JS -->
+        </div>
+
+        <div class="results-actions">
+          <button id="generate-more-btn" class="btn btn-primary">
+            Generate More
+          </button>
+          <button id="new-prompt-btn" class="btn btn-secondary">
+            New Prompt
+          </button>
+        </div>
+      </section>
+
+      <!-- Error Section (hidden by default) -->
+      <section id="error-section" class="section section-error hidden">
+        <div class="error-content">
+          <span class="error-icon">⚠️</span>
+          <h2 id="error-title" class="error-title">Generation failed</h2>
+          <p id="error-message" class="error-message"></p>
+          <p id="error-suggestion" class="error-suggestion"></p>
+          <div class="error-actions">
+            <button id="retry-btn" class="btn btn-primary">Try Again</button>
+            <button id="edit-prompt-btn" class="btn btn-secondary">
+              Edit Prompt
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Scripts -->
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
