@@ -1,0 +1,18 @@
+{
+  "name": "@noisett/figma-plugin",
+  "version": "0.1.0",
+  "description": "Noisett AI Brand Asset Generator - Figma Plugin",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"esbuild src/code.ts --bundle --outfile=dist/code.js --watch\" \"esbuild src/ui.ts --bundle --outfile=dist/ui.js --watch\"",
+    "build": "node build.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.99.0",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

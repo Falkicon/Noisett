@@ -13,6 +13,10 @@ transformers>=4.36.0
 accelerate>=0.25.0
 safetensors>=0.4.0
 
+# External API backends
+fireworks-ai>=0.15.0
+replicate>=0.20.0
+
 # Azure integration
 azure-storage-blob>=12.19.0
 azure-identity>=1.15.0

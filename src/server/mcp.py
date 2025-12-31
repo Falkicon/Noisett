@@ -192,6 +192,167 @@ async def model_info(model_id: str) -> dict:
     return result.model_dump(exclude_none=True)
 
 
+# --- History Commands ---
+
+
+@mcp.tool()
+async def history_list(
+    limit: int = 50,
+    offset: int = 0,
+    asset_type: str | None = None,
+) -> dict:
+    """List generation history for the current user.
+    
+    Returns past generations sorted by creation time (newest first).
+    
+    Args:
+        limit: Maximum number of records to return (1-200)
+        offset: Number of records to skip for pagination
+        asset_type: Optional filter by asset type
+    
+    Returns:
+        List of generation records with total count
+    """
+    from src.commands.history import HistoryListInput, history_list as history_list_cmd
+    from src.core.types import AssetType
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = HistoryListInput(
+        user_id=get_anonymous_user_id(),
+        limit=limit,
+        offset=offset,
+        asset_type=AssetType(asset_type) if asset_type else None,
+    )
+    result = await history_list_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
+@mcp.tool()
+async def history_get(generation_id: str) -> dict:
+    """Get details of a specific generation from history.
+    
+    Args:
+        generation_id: The generation ID to retrieve
+    
+    Returns:
+        Generation details including prompt, images, and metadata
+    """
+    from src.commands.history import HistoryGetInput, history_get as history_get_cmd
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = HistoryGetInput(
+        user_id=get_anonymous_user_id(),
+        generation_id=generation_id,
+    )
+    result = await history_get_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
+@mcp.tool()
+async def history_delete(generation_id: str) -> dict:
+    """Delete a generation from history.
+    
+    This permanently removes the generation record. The images
+    may still exist in storage but will be orphaned.
+    
+    Args:
+        generation_id: The generation ID to delete
+    
+    Returns:
+        Confirmation of deletion
+    """
+    from src.commands.history import HistoryDeleteInput, history_delete as history_delete_cmd
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = HistoryDeleteInput(
+        user_id=get_anonymous_user_id(),
+        generation_id=generation_id,
+    )
+    result = await history_delete_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
+# --- Favorites Commands ---
+
+
+@mcp.tool()
+async def favorites_add(
+    generation_id: str,
+    prompt: str | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Add a generation to favorites.
+    
+    Saves a generation for quick access later. Optionally add
+    notes to remember why it was favorited.
+    
+    Args:
+        generation_id: The generation ID to favorite
+        prompt: Original prompt (for display)
+        notes: Optional notes about why this was favorited
+    
+    Returns:
+        Favorite record with timestamp
+    """
+    from src.commands.favorites import FavoriteAddInput, favorites_add as favorites_add_cmd
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = FavoriteAddInput(
+        user_id=get_anonymous_user_id(),
+        generation_id=generation_id,
+        prompt=prompt,
+        notes=notes,
+    )
+    result = await favorites_add_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
+@mcp.tool()
+async def favorites_list(limit: int = 50) -> dict:
+    """List favorited generations.
+    
+    Returns favorites sorted by when they were added (newest first).
+    
+    Args:
+        limit: Maximum number of favorites to return (1-100)
+    
+    Returns:
+        List of favorites with total count
+    """
+    from src.commands.favorites import FavoritesListInput, favorites_list as favorites_list_cmd
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = FavoritesListInput(
+        user_id=get_anonymous_user_id(),
+        limit=limit,
+    )
+    result = await favorites_list_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
+@mcp.tool()
+async def favorites_remove(generation_id: str) -> dict:
+    """Remove a generation from favorites.
+    
+    This only removes the favorite record, not the generation itself.
+    
+    Args:
+        generation_id: The generation ID to unfavorite
+    
+    Returns:
+        Confirmation of removal
+    """
+    from src.commands.favorites import FavoriteRemoveInput, favorites_remove as favorites_remove_cmd
+    from src.core.auth import get_anonymous_user_id
+
+    input_data = FavoriteRemoveInput(
+        user_id=get_anonymous_user_id(),
+        generation_id=generation_id,
+    )
+    result = await favorites_remove_cmd(input_data)
+    return result.model_dump(exclude_none=True)
+
+
 # --- Entry Point ---
 
 

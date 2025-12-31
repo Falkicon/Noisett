@@ -34,12 +34,95 @@ from src.commands.job import (
     list_jobs as job_list,
     status as job_status,
 )
+from src.commands.lora import (
+    CreateLoraInput,
+    LoraActivateInput,
+    LoraDeleteInput,
+    LoraListInput,
+    LoraStatusInput,
+    TrainLoraInput,
+    UploadImagesInput,
+    activate as lora_activate,
+    create as lora_create,
+    delete as lora_delete,
+    list_loras as lora_list,
+    status as lora_status,
+    train as lora_train,
+    upload_images as lora_upload_images,
+)
 from src.commands.model import (
     ModelInfoInput,
     info as model_info,
     list_models as model_list,
 )
+from src.commands.quality import (
+    PostProcessInput,
+    QualityPresetsInput,
+    RefineInput,
+    UpscaleInput,
+    VariationsInput,
+    presets as quality_presets,
+    refine as quality_refine,
+    upscale as quality_upscale,
+    variations as quality_variations,
+    post_process as quality_post_process,
+)
+from src.commands.history import (
+    HistoryGetInput,
+    HistoryDeleteInput,
+    HistoryListInput,
+    history_list,
+    history_get,
+    history_delete,
+)
+from src.commands.favorites import (
+    FavoritesAddInput,
+    FavoritesListInput,
+    FavoritesRemoveInput,
+    favorites_add,
+    favorites_list,
+    favorites_remove,
+)
 from src.core.result import CommandResult
+from src.core.auth import get_anonymous_user_id
+
+
+# CLI user ID for local testing (in production, JWT provides user_id)
+CLI_USER_ID = get_anonymous_user_id()
+
+
+# ============================================================================
+# Wrapper functions for commands that require user_id
+# ============================================================================
+
+async def cli_history_list(input_data: HistoryListInput | None = None) -> CommandResult:
+    """CLI wrapper for history.list that provides user_id."""
+    return history_list(user_id=CLI_USER_ID, input_data=input_data)
+
+
+async def cli_history_get(input_data: HistoryGetInput) -> CommandResult:
+    """CLI wrapper for history.get that provides user_id."""
+    return history_get(user_id=CLI_USER_ID, input_data=input_data)
+
+
+async def cli_history_delete(input_data: HistoryDeleteInput) -> CommandResult:
+    """CLI wrapper for history.delete that provides user_id."""
+    return history_delete(user_id=CLI_USER_ID, input_data=input_data)
+
+
+async def cli_favorites_add(input_data: FavoritesAddInput) -> CommandResult:
+    """CLI wrapper for favorites.add that provides user_id."""
+    return favorites_add(user_id=CLI_USER_ID, input_data=input_data)
+
+
+async def cli_favorites_list(input_data: FavoritesListInput | None = None) -> CommandResult:
+    """CLI wrapper for favorites.list that provides user_id."""
+    return favorites_list(user_id=CLI_USER_ID, input_data=input_data)
+
+
+async def cli_favorites_remove(input_data: FavoritesRemoveInput) -> CommandResult:
+    """CLI wrapper for favorites.remove that provides user_id."""
+    return favorites_remove(user_id=CLI_USER_ID, input_data=input_data)
 
 console = Console()
 
@@ -52,13 +135,35 @@ COMMANDS: dict[str, tuple[Callable, type | None]] = {
     "job.list": (job_list, JobListInput),
     "model.list": (model_list, None),
     "model.info": (model_info, ModelInfoInput),
+    # LoRA training commands (Phase 5)
+    "lora.create": (lora_create, CreateLoraInput),
+    "lora.upload-images": (lora_upload_images, UploadImagesInput),
+    "lora.train": (lora_train, TrainLoraInput),
+    "lora.status": (lora_status, LoraStatusInput),
+    "lora.list": (lora_list, LoraListInput),
+    "lora.activate": (lora_activate, LoraActivateInput),
+    "lora.delete": (lora_delete, LoraDeleteInput),
+    # Quality pipeline commands (Phase 6)
+    "quality.presets": (quality_presets, QualityPresetsInput),
+    "refine": (quality_refine, RefineInput),
+    "upscale": (quality_upscale, UpscaleInput),
+    "variations": (quality_variations, VariationsInput),
+    "post-process": (quality_post_process, PostProcessInput),
+    # History commands (Phase 8)
+    "history.list": (cli_history_list, HistoryListInput),
+    "history.get": (cli_history_get, HistoryGetInput),
+    "history.delete": (cli_history_delete, HistoryDeleteInput),
+    # Favorites commands (Phase 8)
+    "favorites.add": (cli_favorites_add, FavoritesAddInput),
+    "favorites.list": (cli_favorites_list, FavoritesListInput),
+    "favorites.remove": (cli_favorites_remove, FavoritesRemoveInput),
 }
 
 
 def print_result(result: CommandResult) -> None:
     """Print a CommandResult with rich formatting."""
     # Convert to dict for JSON output
-    result_dict = result.model_dump(exclude_none=True)
+    result_dict = result.model_dump(exclude_none=True, mode="json")
     
     # Determine style based on success
     if result.success:

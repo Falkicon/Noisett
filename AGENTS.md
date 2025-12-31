@@ -1,23 +1,28 @@
 # Noisett - AI Agent Context
 
-> **Project:** Noisett (Brand Asset Generator)
-> **Architecture:** Agent-First Development (AFD)
-> **Status:** All Phases Complete ✅ | Live at Azure Container Apps
+> **Project:** Noisett (Brand Asset Generator)  
+> **Architecture:** Agent-First Development (AFD)  
+> **Status:** Phases 1-8 Complete ✅ | Code Review Fixes Applied | **v0.9.1-dev**  
+> **Live URL:** https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/
 
 ---
 
 ## Implementation Progress
 
-| Phase | Component   | Status  | Notes                           |
-| ----- | ----------- | ------- | ------------------------------- |
-| 1     | Commands    | ✅ Done | 7 commands implemented          |
-| 2     | MCP Server  | ✅ Done | FastMCP integration             |
-| 3     | ML Pipeline | ✅ Done | Mock + HuggingFace backends     |
-| 4     | REST API    | ✅ Done | FastAPI, 8 endpoints            |
-| 5     | Web UI      | ✅ Done | Vanilla JS frontend             |
-| 6     | Deployment  | ✅ Done | Azure Container Apps (CPU/mock) |
+### Completed (v0.9.x)
 
-**Tests:** 29 passing
+| Phase | Component        | Status  | Notes                                      |
+| ----- | ---------------- | ------- | ------------------------------------------ |
+| 1     | Commands         | ✅ Done | 7 asset/job commands with Pydantic         |
+| 2     | MCP Server       | ✅ Done | FastMCP integration, 12 tools              |
+| 3     | ML Pipeline      | ✅ Done | Mock, HuggingFace, **Fireworks (FLUX)**    |
+| 4     | Deployment       | ✅ Done | Azure Container Apps, CI/CD, REST API      |
+| 5     | LoRA Training    | ✅ Done | 7 lora.\* commands (MVP simulation)        |
+| 6     | Quality Pipeline | ✅ Done | 5 quality commands (refine, upscale, etc)  |
+| 7     | Figma Plugin     | ✅ Done | TypeScript plugin, esbuild, REST API       |
+| 8     | Auth & Storage   | ✅ Done | SQLite storage, history/favorites commands |
+
+**Tests:** 100 passing (all tests)
 
 ---
 
@@ -29,10 +34,10 @@
 | **Container App**  | noisett (East US)                                                    |
 | **Registry**       | noisettacr.azurecr.io                                                |
 | **Resource Group** | noisett-rg                                                           |
-| **Version**        | v0.6.2                                                               |
-| **Backend**        | ML_BACKEND=mock (placeholder images for testing)                     |
+| **Version**        | v0.6.3                                                               |
+| **Backend**        | ML_BACKEND=fireworks (real FLUX inference via Fireworks.ai)          |
 
-> **Note:** Currently running CPU-only with mock backend. GPU quota request pending for real inference.
+> **Note:** Now using Fireworks.ai for real AI image generation with FLUX models (~$0.003/image).
 
 ---
 
@@ -64,11 +69,11 @@ Noisett is an internal AI image generation tool that creates on-brand illustrati
 │                                ▼                                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                        COMMAND LAYER (Source of Truth)                   │
-│                    Python + FastMCP + Pydantic                           │
-│  asset.generate │ asset.types │ job.status │ job.cancel │ model.list    │
+│                    Python + FastMCP + Pydantic (25 Commands)             │
+│  asset.* │ job.* │ model.* │ lora.* │ quality.* │ history.* │ favorites.* │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                           ML INFERENCE LAYER                             │
-│              PyTorch + Diffusers + HiDream + LoRAs                       │
+│          Mock | HuggingFace | Fireworks.ai (FLUX) | Replicate            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,8 +93,21 @@ noisett job.status '{"job_id": "abc-123"}'
 # List available models
 noisett model.list '{}'
 
-# List asset types
-noisett asset.types '{}'
+# LoRA Training workflow
+noisett lora.create '{"name": "Xbox Style", "trigger_word": "xboxstyle"}'
+noisett lora.upload-images '{"lora_id": "lora_xxx", "images": [{"url": "...", "caption": "..."}]}'
+noisett lora.train '{"lora_id": "lora_xxx"}'
+noisett lora.status '{"lora_id": "lora_xxx"}'
+noisett lora.activate '{"lora_id": "lora_xxx"}'
+noisett lora.list '{}'
+
+# History and favorites
+noisett history.list '{}'
+noisett history.get '{"generation_id": "gen_xxx"}'
+noisett history.delete '{"generation_id": "gen_xxx"}'
+noisett favorites.add '{"generation_id": "gen_xxx", "prompt": "cloud computing concept"}'
+noisett favorites.list '{}'
+noisett favorites.remove '{"generation_id": "gen_xxx"}'
 ```
 
 ### MCP (VS Code/Cursor)
@@ -122,6 +140,39 @@ Configure in `.cursor/mcp.json`:
 | `model.list`     | List available models         | No       |
 | `model.info`     | Get model details + licensing | No       |
 
+### LoRA Training Commands (Phase 5)
+
+| Command              | Description                      | Mutation |
+| -------------------- | -------------------------------- | -------- |
+| `lora.create`        | Create new LoRA training project | Yes      |
+| `lora.upload-images` | Upload training images           | Yes      |
+| `lora.train`         | Start training job               | Yes      |
+| `lora.status`        | Get training status/progress     | No       |
+| `lora.list`          | List all LoRA projects           | No       |
+| `lora.activate`      | Activate/deactivate LoRA         | Yes      |
+| `lora.delete`        | Delete a LoRA project            | Yes      |
+
+### Quality Pipeline Commands (Phase 6)
+
+| Command           | Description                     | Mutation |
+| ----------------- | ------------------------------- | -------- |
+| `quality.presets` | List available quality presets  | No       |
+| `refine`          | Apply refinement pass (img2img) | No       |
+| `upscale`         | Upscale image 2x/4x             | No       |
+| `variations`      | Generate variations from source | No       |
+| `post-process`    | Sharpen, color correct, convert | No       |
+
+### History & Favorites Commands (Phase 8)
+
+| Command            | Description                      | Mutation |
+| ------------------ | -------------------------------- | -------- |
+| `history.list`     | List user's generation history   | No       |
+| `history.get`      | Get specific generation details  | No       |
+| `history.delete`   | Delete generation from history   | Yes      |
+| `favorites.add`    | Add generation to favorites      | Yes      |
+| `favorites.list`   | List user's favorite generations | No       |
+| `favorites.remove` | Remove from favorites            | Yes      |
+
 All commands return `CommandResult` with UX-enabling fields:
 
 ```python
@@ -138,18 +189,17 @@ All commands return `CommandResult` with UX-enabling fields:
 
 ## Tech Stack
 
-| Layer       | Technology                    | Status         |
-| ----------- | ----------------------------- | -------------- |
-| Commands    | Python + Pydantic             | ✅ Implemented |
-| MCP Server  | FastMCP (official Python SDK) | ✅ Implemented |
-| ML Backends | Mock, HuggingFace (FLUX)      | ✅ Implemented |
-| REST API    | FastAPI                       | ✅ Implemented |
-| Web UI      | Vanilla JS/HTML/CSS           | ✅ Implemented |
-| Compute     | Azure Container Apps (CPU)    | ✅ Deployed    |
-| Registry    | Azure Container Registry      | ✅ Deployed    |
-| Auth        | Microsoft Entra ID            | ⏳ Pending     |
-| Storage     | Azure Blob                    | ⏳ Pending     |
-| GPU         | NC-series (real inference)    | ⏳ Pending     |
+| Layer       | Technology                             | Status         |
+| ----------- | -------------------------------------- | -------------- |
+| Commands    | Python + Pydantic                      | ✅ Implemented |
+| MCP Server  | FastMCP (official Python SDK)          | ✅ Implemented |
+| ML Backends | Mock, HuggingFace, Fireworks.ai (FLUX) | ✅ Implemented |
+| REST API    | FastAPI                                | ✅ Implemented |
+| Web UI      | Vanilla JS/HTML/CSS                    | ✅ Implemented |
+| Compute     | Azure Container Apps (CPU)             | ✅ Deployed    |
+| Registry    | Azure Container Registry               | ✅ Deployed    |
+| Auth        | Microsoft Entra ID (JWT middleware)    | ✅ Implemented |
+| Storage     | SQLite (local)                         | ✅ Implemented |
 
 ---
 
@@ -257,6 +307,18 @@ noisett/
 │   ├── styles.css               # Design tokens + components
 │   ├── api.js                   # API client
 │   └── app.js                   # Application logic
+│
+├── figma-plugin/                # Figma plugin (v2) ✅
+│   ├── manifest.json            # Plugin manifest
+│   ├── package.json             # Dependencies (esbuild)
+│   ├── build.js                 # Custom build script
+│   ├── src/
+│   │   ├── code.ts              # Main plugin code (Figma API)
+│   │   ├── ui.html              # Plugin panel UI
+│   │   ├── ui.ts                # UI logic
+│   │   ├── api.ts               # Backend API client
+│   │   └── types.ts             # TypeScript types
+│   └── dist/                    # Built output (code.js, ui.html)
 │
 └── tests/                       # Test suite ✅
     ├── __init__.py

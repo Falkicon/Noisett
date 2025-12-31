@@ -4,7 +4,7 @@ All commands return a CommandResult with UX-enabling metadata following
 Agent-First Development (AFD) principles.
 """
 
-from typing import Generic, TypeVar, Optional, List, Any
+from typing import Generic, TypeVar
 from pydantic import BaseModel, Field
 
 T = TypeVar("T")
@@ -15,7 +15,7 @@ class CommandError(BaseModel):
 
     code: str
     message: str
-    suggestion: Optional[str] = None
+    suggestion: str | None = None
 
 
 class Warning(BaseModel):
@@ -42,22 +42,22 @@ class CommandResult(BaseModel, Generic[T]):
     """
 
     success: bool
-    data: Optional[T] = None
-    error: Optional[CommandError] = None
+    data: T | None = None
+    error: CommandError | None = None
 
     # UX-enabling fields (AFD standard)
-    reasoning: Optional[str] = None
-    confidence: Optional[float] = Field(default=None, ge=0, le=1)
-    warnings: Optional[List[Warning]] = None
-    suggestions: Optional[List[str]] = None
+    reasoning: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    warnings: list[Warning] | None = None
+    suggestions: list[str] | None = None
 
 
 def success(
     data: T,
-    reasoning: Optional[str] = None,
-    confidence: Optional[float] = None,
-    warnings: Optional[List[Warning]] = None,
-    suggestions: Optional[List[str]] = None,
+    reasoning: str | None = None,
+    confidence: float | None = None,
+    warnings: list[Warning] | None = None,
+    suggestions: list[str] | None = None,
 ) -> CommandResult[T]:
     """Create a successful command result.
     
@@ -84,8 +84,8 @@ def success(
 def error(
     code: str,
     message: str,
-    suggestion: Optional[str] = None,
-) -> CommandResult[Any]:
+    suggestion: str | None = None,
+) -> CommandResult[None]:
     """Create an error command result.
     
     Args:
@@ -94,7 +94,7 @@ def error(
         suggestion: Recovery guidance for the user
         
     Returns:
-        CommandResult with success=False
+        CommandResult with success=False and data=None
     """
     return CommandResult(
         success=False,

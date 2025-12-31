@@ -7,7 +7,6 @@ Commands:
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +34,7 @@ class JobCancelInput(BaseModel):
     """Input for job.cancel command."""
 
     job_id: str = Field(..., description="Job ID to cancel")
+    reason: str | None = Field(default=None, description="Cancellation reason")
 
 
 class JobCancelOutput(BaseModel):
@@ -52,7 +52,7 @@ class JobListInput(BaseModel):
         le=100,
         description="Maximum number of jobs to return",
     )
-    status_filter: Optional[JobStatus] = Field(
+    status_filter: JobStatus | None = Field(
         default=None,
         description="Optional filter by status",
     )
@@ -61,7 +61,7 @@ class JobListInput(BaseModel):
 class JobListOutput(BaseModel):
     """Output for job.list command."""
 
-    jobs: List[Job]
+    jobs: list[Job]
     total: int
 
 

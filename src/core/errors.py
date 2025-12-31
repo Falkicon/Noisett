@@ -34,6 +34,36 @@ class ErrorCode(str, Enum):
     GENERATION_FAILED = "GENERATION_FAILED"
     GENERATION_TIMEOUT = "GENERATION_TIMEOUT"
 
+    # LoRA training errors (Phase 5)
+    LORA_NOT_FOUND = "LORA_NOT_FOUND"
+    LORA_ALREADY_EXISTS = "LORA_ALREADY_EXISTS"
+    TRAINING_FAILED = "TRAINING_FAILED"
+    TRAINING_IN_PROGRESS = "TRAINING_IN_PROGRESS"
+    TRAINING_NOT_STARTED = "TRAINING_NOT_STARTED"
+    INVALID_TRAINING_DATA = "INVALID_TRAINING_DATA"
+    INSUFFICIENT_IMAGES = "INSUFFICIENT_IMAGES"
+    TOO_MANY_IMAGES = "TOO_MANY_IMAGES"
+    UPLOAD_FAILED = "UPLOAD_FAILED"
+    LORA_NOT_READY = "LORA_NOT_READY"
+    CANNOT_DELETE_ACTIVE = "CANNOT_DELETE_ACTIVE"
+
+    # Quality pipeline errors (Phase 6)
+    IMAGE_URL_INVALID = "IMAGE_URL_INVALID"
+    IMAGE_FETCH_FAILED = "IMAGE_FETCH_FAILED"
+    REFINE_FAILED = "REFINE_FAILED"
+    UPSCALE_FAILED = "UPSCALE_FAILED"
+    VARIATIONS_FAILED = "VARIATIONS_FAILED"
+    POST_PROCESS_FAILED = "POST_PROCESS_FAILED"
+
+    # Auth & Storage errors (Phase 8)
+    UNAUTHORIZED = "UNAUTHORIZED"
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    TOKEN_INVALID = "TOKEN_INVALID"
+    HISTORY_NOT_FOUND = "HISTORY_NOT_FOUND"
+    FAVORITE_NOT_FOUND = "FAVORITE_NOT_FOUND"
+    FAVORITE_ALREADY_EXISTS = "FAVORITE_ALREADY_EXISTS"
+    STORAGE_ERROR = "STORAGE_ERROR"
+
     # System errors
     INTERNAL_ERROR = "INTERNAL_ERROR"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
@@ -104,6 +134,105 @@ ERROR_TEMPLATES = {
     ErrorCode.SERVICE_UNAVAILABLE: {
         "message": "Service is temporarily unavailable",
         "suggestion": "Please try again in a few moments",
+    },
+    # LoRA training error templates (Phase 5)
+    ErrorCode.LORA_NOT_FOUND: {
+        "message": "LoRA not found",
+        "suggestion": "Check the LoRA ID or use lora.list to see available LoRAs",
+    },
+    ErrorCode.LORA_ALREADY_EXISTS: {
+        "message": "A LoRA with this name already exists",
+        "suggestion": "Use a different name or delete the existing LoRA first",
+    },
+    ErrorCode.TRAINING_FAILED: {
+        "message": "LoRA training failed",
+        "suggestion": "Check training images quality and try again with different parameters",
+    },
+    ErrorCode.TRAINING_IN_PROGRESS: {
+        "message": "Training is already in progress",
+        "suggestion": "Wait for current training to complete or cancel it first",
+    },
+    ErrorCode.TRAINING_NOT_STARTED: {
+        "message": "Training has not been started",
+        "suggestion": "Use lora.train to start training after uploading images",
+    },
+    ErrorCode.INVALID_TRAINING_DATA: {
+        "message": "Invalid training data format",
+        "suggestion": "Ensure images are JPEG or PNG, min 512x512, max 4096x4096",
+    },
+    ErrorCode.INSUFFICIENT_IMAGES: {
+        "message": "Not enough training images",
+        "suggestion": "Upload at least 10 images (20-30 recommended for best results)",
+    },
+    ErrorCode.TOO_MANY_IMAGES: {
+        "message": "Too many training images",
+        "suggestion": "Maximum 100 images allowed. Remove some and try again",
+    },
+    ErrorCode.UPLOAD_FAILED: {
+        "message": "Image upload failed",
+        "suggestion": "Check file format and size, then retry the upload",
+    },
+    ErrorCode.LORA_NOT_READY: {
+        "message": "LoRA is not ready for use",
+        "suggestion": "Wait for training to complete (status: completed)",
+    },
+    ErrorCode.CANNOT_DELETE_ACTIVE: {
+        "message": "Cannot delete an active LoRA",
+        "suggestion": "Deactivate the LoRA first with lora.activate --active false",
+    },
+    # Quality pipeline error templates (Phase 6)
+    ErrorCode.IMAGE_URL_INVALID: {
+        "message": "Invalid image URL",
+        "suggestion": "Provide a valid HTTP/HTTPS URL to an image",
+    },
+    ErrorCode.IMAGE_FETCH_FAILED: {
+        "message": "Failed to fetch image from URL",
+        "suggestion": "Check that the URL is accessible and returns a valid image",
+    },
+    ErrorCode.REFINE_FAILED: {
+        "message": "Image refinement failed",
+        "suggestion": "Try a lower denoise strength or different image",
+    },
+    ErrorCode.UPSCALE_FAILED: {
+        "message": "Image upscaling failed",
+        "suggestion": "Try a different upscaling model or smaller image",
+    },
+    ErrorCode.VARIATIONS_FAILED: {
+        "message": "Failed to generate variations",
+        "suggestion": "Try a different source image or variation strength",
+    },
+    ErrorCode.POST_PROCESS_FAILED: {
+        "message": "Post-processing failed",
+        "suggestion": "Try different processing options or a different image",
+    },
+    # Auth & Storage error templates (Phase 8)
+    ErrorCode.UNAUTHORIZED: {
+        "message": "Authentication required",
+        "suggestion": "Sign in with your Microsoft account to access this feature",
+    },
+    ErrorCode.TOKEN_EXPIRED: {
+        "message": "Your session has expired",
+        "suggestion": "Sign in again to refresh your session",
+    },
+    ErrorCode.TOKEN_INVALID: {
+        "message": "Invalid authentication token",
+        "suggestion": "Sign out and sign in again",
+    },
+    ErrorCode.HISTORY_NOT_FOUND: {
+        "message": "History record not found",
+        "suggestion": "Check the job ID or use history.list to see your history",
+    },
+    ErrorCode.FAVORITE_NOT_FOUND: {
+        "message": "Favorite not found",
+        "suggestion": "Check the job ID and image index, or use favorites.list",
+    },
+    ErrorCode.FAVORITE_ALREADY_EXISTS: {
+        "message": "Image is already in favorites",
+        "suggestion": "Use favorites.list to see your current favorites",
+    },
+    ErrorCode.STORAGE_ERROR: {
+        "message": "Storage operation failed",
+        "suggestion": "Please try again or contact support",
     },
 }
 

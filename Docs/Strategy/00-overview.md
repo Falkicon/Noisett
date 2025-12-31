@@ -1,23 +1,34 @@
 # Noisett Architecture Overview
 
-**Project:** Noisett (Brand Asset Generator)
-**Architecture:** Agent-First Development (AFD)
-**Status:** Phase 1-5 Complete ✅ | Phase 6 (Deployment) In Progress 🔄
+**Project:** Noisett (Brand Asset Generator)  
+**Architecture:** Agent-First Development (AFD)  
+**Status:** Phases 1-4 Complete ✅ | **v0.6.3 Deployed to Azure** 🟢  
+**Live URL:** https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/
 
 ---
 
 ## Implementation Progress
 
-| Phase | Component   | Status     | Notes                              |
-| ----- | ----------- | ---------- | ---------------------------------- |
-| 1     | Commands    | ✅ Done    | 7 commands with Pydantic schemas   |
-| 2     | MCP Server  | ✅ Done    | FastMCP integration, 7 tools       |
-| 3     | ML Pipeline | ✅ Done    | Mock + HuggingFace (FLUX) backends |
-| 4     | REST API    | ✅ Done    | FastAPI, 8 endpoints, 14 tests     |
-| 5     | Web UI      | ✅ Done    | Vanilla JS frontend                |
-| 6     | Deployment  | 🔄 Started | Dockerfile, CI/CD, Azure configs   |
+### Completed (v0.6.x)
 
-**Tests:** 29 passing
+| Phase | Component   | Status  | Notes                                   |
+| ----- | ----------- | ------- | --------------------------------------- |
+| 1     | Commands    | ✅ Done | 7 commands with Pydantic schemas        |
+| 2     | MCP Server  | ✅ Done | FastMCP integration, 7 tools            |
+| 3     | ML Pipeline | ✅ Done | Mock, HuggingFace, **Fireworks (FLUX)** |
+| 4     | Deployment  | ✅ Done | Azure Container Apps, CI/CD, REST API   |
+
+### Planned (v1.x+)
+
+| Phase | Component        | Status     | Strategy Doc                                         |
+| ----- | ---------------- | ---------- | ---------------------------------------------------- |
+| 5     | LoRA Training    | 🔜 Planned | [05-training-pipeline.md](./05-training-pipeline.md) |
+| 6     | Quality Pipeline | 🔜 Planned | [06-quality-pipeline.md](./06-quality-pipeline.md)   |
+| 7     | Figma Plugin     | 🔜 Planned | [07-figma-plugin.md](./07-figma-plugin.md)           |
+| 8     | Auth & Storage   | 🔜 Planned | [08-auth-storage.md](./08-auth-storage.md)           |
+
+**Tests:** 29 passing  
+**Backend:** Fireworks.ai (FLUX-1 Schnell) — ~$0.003/image
 
 ---
 
@@ -79,12 +90,13 @@ All functionality flows through the command layer:
 | --------------- | ----------------------------- | ----------------------------------------------------- | ------ |
 | **Commands**    | Python + Pydantic             | Native ML ecosystem, type-safe schemas                | ✅     |
 | **MCP Server**  | FastMCP (official Python SDK) | Simplest path to MCP, auto-generates tool definitions | ✅     |
-| **ML Backends** | Mock, HuggingFace, Replicate  | Multiple options: free testing → paid production      | ✅     |
+| **ML Backends** | Fireworks.ai (FLUX-1 Schnell) | Fast inference (~3s), affordable (~$0.003/image)      | ✅     |
 | **REST API**    | FastAPI                       | Async, shares Pydantic models with commands           | ✅     |
 | **Web UI**      | Vanilla JS/HTML/CSS           | Small surface, easy to swap, AFD philosophy           | ✅     |
-| **Auth**        | Microsoft Entra ID            | Corporate SSO requirement                             | ⏳     |
-| **Storage**     | Azure Blob                    | Generated images                                      | ⏳     |
-| **Compute**     | Azure Container Apps (GPU)    | Serverless scaling                                    | ⏳     |
+| **Compute**     | Azure Container Apps (CPU)    | Deployed, serverless scaling                          | ✅     |
+| **Training**    | Replicate (LoRA)              | Hosted training for custom brand models               | 🔜     |
+| **Auth**        | Microsoft Entra ID            | Corporate SSO requirement                             | 🔜     |
+| **Storage**     | Azure Blob                    | Generated images, LoRA files                          | 🔜     |
 
 ---
 
@@ -277,29 +289,41 @@ python test_generate.py "robot mascot" --backend replicate
 
 ## Success Criteria
 
+### Completed ✅
+
 - [x] All commands work via CLI before UI exists
 - [x] MCP server created with FastMCP
-- [x] ML pipeline supports multiple backends (mock, huggingface, replicate)
+- [x] ML pipeline supports multiple backends (mock, huggingface, fireworks)
 - [x] 29 tests passing
 - [x] REST API exposes commands (8 endpoints)
 - [x] Web UI with vanilla JS (4 files)
 - [x] UI is a thin wrapper with no business logic
-- [x] Deployment infrastructure (Dockerfile, CI/CD, Azure configs) — Phase 6 started
-- [ ] Can generate images via CLI, MCP, and Web UI (same commands)
+- [x] Can generate images via CLI, REST API, and Web UI (same commands)
+- [x] Azure Container Apps deployment live
+
+### Next Milestones 🔜
+
+- [ ] Train custom LoRAs on brand assets (Phase 5)
+- [ ] Quality pipeline with refinement/upscaling (Phase 6)
+- [ ] Figma plugin for in-workflow generation (Phase 7)
+- [ ] Entra ID auth + persistent storage (Phase 8)
 - [ ] MCP server discoverable in VS Code/Cursor
-- [ ] Azure deployment live with GPU
 
 ---
 
 ## Related Documents
 
-| Document                               | Description                               |
-| -------------------------------------- | ----------------------------------------- |
-| [CHANGELOG.md](../../CHANGELOG.md)     | Release history and changes               |
-| [01-commands.md](./01-commands.md)     | Command definitions with Pydantic schemas |
-| [02-mcp-server.md](./02-mcp-server.md) | FastMCP integration details               |
-| [03-web-ui.md](./03-web-ui.md)         | Vanilla JS UI approach                    |
-| [04-deployment.md](./04-deployment.md) | Azure deployment guide                    |
+| Document                                             | Description                               |
+| ---------------------------------------------------- | ----------------------------------------- |
+| [CHANGELOG.md](../../CHANGELOG.md)                   | Release history and changes               |
+| [01-commands.md](./01-commands.md)                   | Command definitions with Pydantic schemas |
+| [02-mcp-server.md](./02-mcp-server.md)               | FastMCP integration details               |
+| [03-web-ui.md](./03-web-ui.md)                       | Vanilla JS UI approach                    |
+| [04-deployment.md](./04-deployment.md)               | Azure deployment guide                    |
+| [05-training-pipeline.md](./05-training-pipeline.md) | LoRA training for brand customization     |
+| [06-quality-pipeline.md](./06-quality-pipeline.md)   | Refinement, upscaling, post-processing    |
+| [07-figma-plugin.md](./07-figma-plugin.md)           | Figma integration                         |
+| [08-auth-storage.md](./08-auth-storage.md)           | Entra ID auth + Azure Blob storage        |
 
 ---
 

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      /* ==========================================================================
+       Design Tokens
+       ========================================================================== */
+      :root {
+        /* Colors - Figma dark theme */
+        --color-bg: #2c2c2c;
+        --color-surface: #383838;
+        --color-surface-hover: #444444;
+        --color-border: #4d4d4d;
+        --color-text: #ffffff;
+        --color-text-secondary: #b3b3b3;
+        --color-text-muted: #808080;
+
+        /* Brand - Violet accent */
+        --color-primary: #a855f7;
+        --color-primary-hover: #9333ea;
+        --color-primary-light: #c084fc;
+
+        /* Semantic */
+        --color-success: #22c55e;
+        --color-error: #ef4444;
+        --color-warning: #f59e0b;
+
+        /* Spacing - 8px grid */
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 20px;
+        --space-6: 24px;
+
+        /* Typography */
+        --font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-size-xs: 11px;
+        --font-size-sm: 12px;
+        --font-size-md: 13px;
+        --font-size-lg: 14px;
+
+        /* Border radius */
+        --radius-sm: 4px;
+        --radius-md: 6px;
+        --radius-lg: 8px;
+      }
+
+      /* ==========================================================================
+       Base Styles
+       ========================================================================== */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        height: 100%;
+        font-family: var(--font-family);
+        font-size: var(--font-size-md);
+        color: var(--color-text);
+        background: var(--color-bg);
+      }
+
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: var(--space-4);
+        gap: var(--space-4);
+      }
+
+      /* ==========================================================================
+       Components
+       ========================================================================== */
+
+      /* Section */
+      .section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+
+      .section-label {
+        font-size: var(--font-size-sm);
+        font-weight: 500;
+        color: var(--color-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* Input */
+      .input,
+      .textarea,
+      .select {
+        width: 100%;
+        padding: var(--space-2) var(--space-3);
+        font-family: var(--font-family);
+        font-size: var(--font-size-md);
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        outline: none;
+        transition: border-color 0.15s, background-color 0.15s;
+      }
+
+      .input:hover,
+      .textarea:hover,
+      .select:hover {
+        background: var(--color-surface-hover);
+      }
+
+      .input:focus,
+      .textarea:focus,
+      .select:focus {
+        border-color: var(--color-primary);
+      }
+
+      .textarea {
+        min-height: 80px;
+        resize: vertical;
+        line-height: 1.4;
+      }
+
+      /* Select */
+      .select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23b3b3b3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right var(--space-3) center;
+        padding-right: calc(var(--space-3) + 16px);
+        cursor: pointer;
+      }
+
+      /* Button */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-4);
+        font-family: var(--font-family);
+        font-size: var(--font-size-md);
+        font-weight: 500;
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .btn:hover:not(:disabled) {
+        background: var(--color-surface-hover);
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        color: white;
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--color-primary-hover);
+        border-color: var(--color-primary-hover);
+      }
+
+      .btn-full {
+        width: 100%;
+      }
+
+      /* Image Grid */
+      .results-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-2);
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .result-item {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        background: var(--color-surface);
+        cursor: pointer;
+        transition: transform 0.15s;
+      }
+
+      .result-item:hover {
+        transform: scale(1.02);
+      }
+
+      .result-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .result-item-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+
+      .result-item:hover .result-item-overlay {
+        opacity: 1;
+      }
+
+      .result-item-overlay span {
+        font-size: var(--font-size-sm);
+        font-weight: 500;
+        color: white;
+      }
+
+      /* Progress */
+      .progress {
+        width: 100%;
+        height: 4px;
+        background: var(--color-surface);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: var(--color-primary);
+        border-radius: 2px;
+        transition: width 0.3s ease-out;
+      }
+
+      /* Status */
+      .status {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        padding: var(--space-6);
+        text-align: center;
+      }
+
+      .status-icon {
+        font-size: 32px;
+      }
+
+      .status-text {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+      }
+
+      .status-error {
+        color: var(--color-error);
+      }
+
+      /* Settings */
+      .settings-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+
+      .settings-toggle:hover {
+        color: var(--color-text-secondary);
+      }
+
+      .settings-panel {
+        display: none;
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-3);
+        background: var(--color-surface);
+        border-radius: var(--radius-md);
+      }
+
+      .settings-panel.visible {
+        display: flex;
+      }
+
+      /* Hidden */
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header -->
+      <div class="section">
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          "
+        >
+          <div style="display: flex; align-items: center; gap: var(--space-2)">
+            <span style="font-size: 18px">🎨</span>
+            <span style="font-weight: 600">Noisett</span>
+          </div>
+          <div class="settings-toggle" id="settingsToggle">⚙️ Settings</div>
+        </div>
+      </div>
+
+      <!-- Settings Panel (collapsible) -->
+      <div class="settings-panel" id="settingsPanel">
+        <div class="section">
+          <label class="section-label">API Key (optional)</label>
+          <input
+            type="password"
+            class="input"
+            id="apiKeyInput"
+            placeholder="Enter API key..."
+          />
+        </div>
+        <button class="btn btn-full" id="saveSettingsBtn">Save Settings</button>
+      </div>
+
+      <!-- Prompt Input -->
+      <div class="section">
+        <label class="section-label">Prompt</label>
+        <textarea
+          class="textarea"
+          id="promptInput"
+          placeholder="Describe the image you want to generate..."
+        ></textarea>
+      </div>
+
+      <!-- Asset Type -->
+      <div class="section">
+        <label class="section-label">Asset Type</label>
+        <select class="select" id="assetTypeSelect">
+          <option value="icons">Icons</option>
+          <option value="product">Product Illustrations</option>
+          <option value="logo">Logos</option>
+          <option value="premium">Premium (High Quality)</option>
+        </select>
+      </div>
+
+      <!-- Generate Button -->
+      <button class="btn btn-primary btn-full" id="generateBtn">
+        ✨ Generate
+      </button>
+
+      <!-- Progress / Status -->
+      <div class="status hidden" id="progressStatus">
+        <div class="status-icon">⏳</div>
+        <div class="progress">
+          <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+        </div>
+        <div class="status-text" id="statusText">Starting generation...</div>
+      </div>
+
+      <!-- Error Status -->
+      <div class="status hidden" id="errorStatus">
+        <div class="status-icon">❌</div>
+        <div class="status-text status-error" id="errorText">Error message</div>
+        <button class="btn" id="retryBtn">Try Again</button>
+      </div>
+
+      <!-- Results Grid -->
+      <div class="results-grid hidden" id="resultsGrid"></div>
+    </div>
+
+    <!-- UI Script placeholder - will be inlined by build -->
+    <script>
+      // UI_SCRIPT_PLACEHOLDER
+    </script>
+  </body>
+</html>

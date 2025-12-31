@@ -14,7 +14,6 @@ Usage:
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +40,7 @@ class GenerateRequest(BaseModel):
 class CancelRequest(BaseModel):
     """Request body for job cancellation."""
     
-    reason: Optional[str] = Field(default=None, description="Cancellation reason")
+    reason: str | None = Field(default=None, description="Cancellation reason")
 
 
 # --- Background Task for Job Processing ---
@@ -72,6 +71,12 @@ async def process_job(job_id: str):
         elif backend == "huggingface":
             from src.ml import HuggingFaceGenerator
             generator = HuggingFaceGenerator()
+        elif backend == "fireworks":
+            from src.ml import FireworksGenerator
+            generator = FireworksGenerator()
+        elif backend == "replicate":
+            from src.ml import ReplicateGenerator
+            generator = ReplicateGenerator()
         else:
             from src.ml import MockGenerator
             generator = MockGenerator()
@@ -122,10 +127,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for local development
+# CORS configuration
+# Read allowed origins from environment or use defaults
+CORS_ORIGINS = os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000"
+).split(",")
+
+# In development, allow all origins if explicitly set
+if os.getenv("CORS_ALLOW_ALL", "false").lower() == "true":
+    CORS_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict in production
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -229,7 +244,7 @@ async def get_job_status(job_id: str):
 
 
 @app.delete("/api/jobs/{job_id}")
-async def cancel_job(job_id: str, request: Optional[CancelRequest] = None):
+async def cancel_job(job_id: str, request: CancelRequest | None = None):
     """Cancel a running generation job."""
     from src.commands.job import JobCancelInput, cancel
 
@@ -254,7 +269,7 @@ async def cancel_job(job_id: str, request: Optional[CancelRequest] = None):
 
 @app.get("/api/jobs")
 async def list_jobs(
-    status: Optional[str] = Query(default=None, description="Filter by status"),
+    status: str | None = Query(default=None, description="Filter by status"),
     limit: int = Query(default=10, ge=1, le=100, description="Max results"),
 ):
     """List recent generation jobs for the current user."""
@@ -262,7 +277,7 @@ async def list_jobs(
 
     try:
         input_data = JobListInput(
-            status=JobStatus(status) if status else None,
+            status_filter=JobStatus(status) if status else None,
             limit=limit,
         )
         result = await list_jobs_cmd(input_data)
@@ -298,6 +313,184 @@ async def get_model_info(model_id: str):
         return result.model_dump(exclude_none=True)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid model ID: {model_id}")
+
+
+# --- Generated Images Endpoint ---
+
+
+@app.get("/api/images/{filename}")
+async def get_generated_image(filename: str):
+    """Serve generated images from temp directory."""
+    import tempfile
+    from pathlib import Path
+    
+    # Validate filename (prevent path traversal)
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    image_path = Path(tempfile.gettempdir()) / "noisett" / filename
+    
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # Determine content type
+    content_type = "image/jpeg" if filename.endswith(".jpg") else "image/png"
+    
+    return FileResponse(image_path, media_type=content_type)
+
+
+# --- History Endpoints (Phase 8) ---
+
+
+@app.get("/api/history")
+async def get_history(
+    limit: int = Query(default=20, ge=1, le=100, description="Max results"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+):
+    """List generation history for the current user.
+    
+    Returns paginated list of past generations with images and metadata.
+    """
+    from src.commands.history import history_list, HistoryListInput
+    from src.core.auth import get_anonymous_user_id
+    
+    # TODO: Get real user from auth when enabled
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = HistoryListInput(limit=limit, offset=offset)
+        result = history_list(user_id=user_id, input_data=input_data)
+        return result.model_dump(exclude_none=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/history/{job_id}")
+async def get_history_item(job_id: str):
+    """Get details of a specific generation from history."""
+    from src.commands.history import history_get, HistoryGetInput
+    from src.core.auth import get_anonymous_user_id
+    
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = HistoryGetInput(job_id=job_id)
+        result = history_get(user_id=user_id, input_data=input_data)
+        
+        if not result.success and result.error:
+            if result.error.get("code") == "HISTORY_NOT_FOUND":
+                raise HTTPException(status_code=404, detail=result.error.get("message"))
+        
+        return result.model_dump(exclude_none=True)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/history/{job_id}")
+async def delete_history_item(job_id: str):
+    """Delete a generation from history."""
+    from src.commands.history import history_delete, HistoryDeleteInput
+    from src.core.auth import get_anonymous_user_id
+    
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = HistoryDeleteInput(job_id=job_id)
+        result = history_delete(user_id=user_id, input_data=input_data)
+        
+        if not result.success and result.error:
+            if result.error.get("code") == "HISTORY_NOT_FOUND":
+                raise HTTPException(status_code=404, detail=result.error.get("message"))
+        
+        return result.model_dump(exclude_none=True)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Favorites Endpoints (Phase 8) ---
+
+
+class FavoriteAddRequest(BaseModel):
+    """Request body for adding a favorite."""
+    
+    job_id: str = Field(..., description="Job ID containing the image")
+    image_index: int = Field(..., ge=0, description="Index of image in job results")
+    image_url: str = Field(..., description="URL of the image")
+    prompt: str | None = Field(default=None, description="Prompt that generated the image")
+
+
+@app.get("/api/favorites")
+async def get_favorites(
+    limit: int = Query(default=50, ge=1, le=100, description="Max results"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+):
+    """List favorite images for the current user."""
+    from src.commands.favorites import favorites_list, FavoritesListInput
+    from src.core.auth import get_anonymous_user_id
+    
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = FavoritesListInput(limit=limit, offset=offset)
+        result = favorites_list(user_id=user_id, input_data=input_data)
+        return result.model_dump(exclude_none=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/favorites")
+async def add_favorite(request: FavoriteAddRequest):
+    """Add an image to favorites."""
+    from src.commands.favorites import favorites_add, FavoritesAddInput
+    from src.core.auth import get_anonymous_user_id
+    
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = FavoritesAddInput(
+            job_id=request.job_id,
+            image_index=request.image_index,
+            image_url=request.image_url,
+            prompt=request.prompt,
+        )
+        result = favorites_add(user_id=user_id, input_data=input_data)
+        
+        if not result.success and result.error:
+            if result.error.get("code") == "FAVORITE_ALREADY_EXISTS":
+                raise HTTPException(status_code=409, detail=result.error.get("message"))
+        
+        return result.model_dump(exclude_none=True)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/favorites/{job_id}/{image_index}")
+async def remove_favorite(job_id: str, image_index: int):
+    """Remove an image from favorites."""
+    from src.commands.favorites import favorites_remove, FavoritesRemoveInput
+    from src.core.auth import get_anonymous_user_id
+    
+    user_id = get_anonymous_user_id()
+    
+    try:
+        input_data = FavoritesRemoveInput(job_id=job_id, image_index=image_index)
+        result = favorites_remove(user_id=user_id, input_data=input_data)
+        
+        if not result.success and result.error:
+            if result.error.get("code") == "FAVORITE_NOT_FOUND":
+                raise HTTPException(status_code=404, detail=result.error.get("message"))
+        
+        return result.model_dump(exclude_none=True)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Static Files (Web UI) ---

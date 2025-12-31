@@ -1,0 +1,14 @@
+{
+  "name": "Noisett",
+  "id": "noisett-brand-generator",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": [
+      "https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io"
+    ]
+  },
+  "permissions": ["currentuser"]
+}

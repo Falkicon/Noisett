@@ -5,8 +5,6 @@ Commands:
 - model.info: Get detailed information about a specific model
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from src.core.errors import ErrorCode, get_error_template
@@ -20,7 +18,7 @@ from src.core.types import MODEL_CONFIGS, Model, ModelId
 class ModelListOutput(BaseModel):
     """Output for model.list command."""
 
-    models: List[Model]
+    models: list[Model]
 
 
 class ModelInfoInput(BaseModel):
@@ -87,7 +85,7 @@ async def info(input: ModelInfoInput) -> CommandResult[ModelInfoOutput]:
     output = ModelInfoOutput(model=model)
 
     # Build warnings
-    warnings: List[Warning] = []
+    warnings: list[Warning] = []
     if not model.commercial_ok:
         warnings.append(
             Warning(

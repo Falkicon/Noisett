@@ -7,7 +7,6 @@ Commands:
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -70,7 +69,7 @@ class AssetGenerateOutput(BaseModel):
 class AssetTypesOutput(BaseModel):
     """Output for asset.types command."""
 
-    types: List[AssetTypeInfo]
+    types: list[AssetTypeInfo]
 
 
 # --- Command Implementations ---
@@ -132,7 +131,7 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
     estimated_seconds = base_seconds.get(input.quality.value, 20) * input.count
 
     # Build warnings
-    warnings: List[Warning] = []
+    warnings: list[Warning] = []
     if not model_info.commercial_ok:
         warnings.append(
             Warning(
@@ -142,7 +141,7 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
         )
 
     # Build suggestions
-    suggestions: List[str] = []
+    suggestions: list[str] = []
     if input.quality == QualityPreset.DRAFT:
         suggestions.append("Use 'standard' quality for better results")
     if input.asset_type == AssetType.PRODUCT:
@@ -178,7 +177,7 @@ async def types() -> CommandResult[AssetTypesOutput]:
 
 
 # Export job store for job commands
-def get_job(job_id: str) -> Optional[Job]:
+def get_job(job_id: str) -> Job | None:
     """Get a job by ID."""
     return _jobs.get(job_id)
 
@@ -188,6 +187,6 @@ def update_job(job: Job) -> None:
     _jobs[job.id] = job
 
 
-def list_all_jobs() -> List[Job]:
+def list_all_jobs() -> list[Job]:
     """List all jobs, newest first."""
     return sorted(_jobs.values(), key=lambda j: j.created_at, reverse=True)

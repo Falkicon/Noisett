@@ -8,7 +8,6 @@ Supports multiple backends:
 
 import os
 from abc import ABC, abstractmethod
-from typing import List
 
 from src.core.types import AssetType, GeneratedImage, ModelId, QualityPreset
 
@@ -24,7 +23,7 @@ class ImageGenerator(ABC):
         model: ModelId,
         quality: QualityPreset,
         count: int,
-    ) -> List[GeneratedImage]:
+    ) -> list[GeneratedImage]:
         """Generate images from a prompt."""
         pass
 
@@ -47,7 +46,7 @@ class MockGenerator(ImageGenerator):
         model: ModelId,
         quality: QualityPreset,
         count: int,
-    ) -> List[GeneratedImage]:
+    ) -> list[GeneratedImage]:
         """Return placeholder images instantly."""
         import random
 
@@ -91,7 +90,7 @@ class HuggingFaceGenerator(ImageGenerator):
         model: ModelId,
         quality: QualityPreset,
         count: int,
-    ) -> List[GeneratedImage]:
+    ) -> list[GeneratedImage]:
         """Generate images using Hugging Face Inference API."""
         import httpx
         import base64
@@ -157,6 +156,101 @@ class HuggingFaceGenerator(ImageGenerator):
         return images
 
 
+class FireworksGenerator(ImageGenerator):
+    """Generator using Fireworks.ai API (cheapest FLUX option, ~$0.003/image)."""
+
+    # Model mappings to Fireworks model IDs (workflows endpoint)
+    MODEL_IDS = {
+        ModelId.FLUX: "accounts/fireworks/models/flux-1-schnell-fp8",  # Fast, cheap
+        ModelId.SD35: "accounts/fireworks/models/flux-1-dev-fp8",  # Higher quality
+    }
+    
+    BASE_URL = "https://api.fireworks.ai/inference/v1/workflows"
+
+    def __init__(self):
+        self.api_key = os.environ.get("FIREWORKS_API_KEY")
+        if not self.api_key:
+            raise ValueError(
+                "FIREWORKS_API_KEY environment variable not set. "
+                "Get your key at https://fireworks.ai/account/api-keys"
+            )
+
+    async def generate(
+        self,
+        prompt: str,
+        asset_type: AssetType,
+        model: ModelId,
+        quality: QualityPreset,
+        count: int,
+    ) -> list[GeneratedImage]:
+        """Generate images using Fireworks.ai REST API."""
+        import httpx
+        import random
+        import tempfile
+        from pathlib import Path
+        
+        # Get model ID
+        model_id = self.MODEL_IDS.get(model, self.MODEL_IDS[ModelId.FLUX])
+        
+        # Build enhanced prompt based on asset type
+        from src.core.types import ASSET_TYPE_CONFIGS
+        asset_config = ASSET_TYPE_CONFIGS[asset_type]
+        enhanced_prompt = asset_config.prompt_template.replace("{subject}", prompt)
+        
+        # Quality to size mapping
+        size_map = {"draft": 512, "standard": 1024, "high": 1024}
+        size = size_map.get(quality.value, 1024)
+        
+        # Build API URL
+        api_url = f"{self.BASE_URL}/{model_id}/text_to_image"
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "image/jpeg",
+        }
+        
+        images = []
+        output_dir = Path(tempfile.gettempdir()) / "noisett"
+        output_dir.mkdir(exist_ok=True)
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for i in range(count):
+                seed = random.randint(1, 999999)
+                
+                payload = {
+                    "prompt": enhanced_prompt,
+                    "width": size,
+                    "height": size,
+                    "seed": seed,
+                }
+                
+                response = await client.post(api_url, headers=headers, json=payload)
+                
+                if response.status_code != 200:
+                    raise ValueError(
+                        f"Fireworks API error: {response.status_code} - {response.text}"
+                    )
+                
+                # Save image to temp file
+                filename = f"fireworks_{i}_{seed}.jpg"
+                image_path = output_dir / filename
+                image_path.write_bytes(response.content)
+                
+                # Return API URL for serving (not file:// URL)
+                images.append(
+                    GeneratedImage(
+                        index=i,
+                        url=f"/api/images/{filename}",
+                        width=size,
+                        height=size,
+                        seed=seed,
+                    )
+                )
+        
+        return images
+
+
 class ReplicateGenerator(ImageGenerator):
     """Generator using Replicate API (supports HiDream, FLUX, SD3.5)."""
 
@@ -182,7 +276,7 @@ class ReplicateGenerator(ImageGenerator):
         model: ModelId,
         quality: QualityPreset,
         count: int,
-    ) -> List[GeneratedImage]:
+    ) -> list[GeneratedImage]:
         """Generate images using Replicate API."""
         import replicate
 
@@ -238,7 +332,7 @@ def get_generator(backend: str = "mock") -> ImageGenerator:
     """Get an image generator by backend name.
     
     Args:
-        backend: "mock", "huggingface", "replicate", or "local"
+        backend: "mock", "huggingface", "replicate", "fireworks", or "local"
         
     Returns:
         ImageGenerator instance
@@ -249,5 +343,7 @@ def get_generator(backend: str = "mock") -> ImageGenerator:
         return HuggingFaceGenerator()
     elif backend == "replicate":
         return ReplicateGenerator()
+    elif backend == "fireworks":
+        return FireworksGenerator()
     else:
-        raise ValueError(f"Unknown backend: {backend}. Use 'mock', 'huggingface', or 'replicate'")
+        raise ValueError(f"Unknown backend: {backend}. Use 'mock', 'huggingface', 'replicate', or 'fireworks'")

@@ -13,7 +13,144 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Microsoft Entra ID authentication
 - Azure Blob storage integration
 - Application Insights monitoring
-- GPU quota approval for real inference
+
+---
+
+## [0.9.0] - 2025-12-31
+
+### Added
+
+- **Figma Plugin** (Phase 7 Complete ✅)
+
+  - TypeScript-based Figma plugin for in-workflow image generation
+  - `figma-plugin/src/code.ts` — Main plugin code (Figma API, image insertion)
+  - `figma-plugin/src/ui.html` — Plugin panel with prompt input, asset selector, results grid
+  - `figma-plugin/src/ui.ts` — UI logic and state management
+  - `figma-plugin/src/api.ts` — Backend API client with polling
+  - `figma-plugin/src/types.ts` — Shared TypeScript types
+
+- **Plugin Features**
+
+  - Generate images directly in Figma
+  - 4 asset types: icons, product, logo, premium
+  - One-click image insertion at viewport center
+  - Progress indicator with real-time polling
+  - Settings persistence via Figma clientStorage
+  - Keyboard shortcut: Cmd/Ctrl+Enter to generate
+
+- **Build System**
+  - Custom esbuild-based build script
+  - Inlines UI JavaScript into HTML (Figma requirement)
+  - Development watch mode: `pnpm dev`
+  - Production build: `pnpm build`
+
+### Changed
+
+- Total surfaces: CLI, MCP, REST API, Web UI, **Figma Plugin**
+- Updated AGENTS.md with Phase 7 completion and plugin structure
+
+### Technical Notes
+
+- Plugin calls existing REST API endpoints (`/api/generate`, `/api/jobs/{id}`)
+- No backend changes required — AFD architecture validated
+- Plugin follows Figma design language (Inter font, 8px grid, dark theme)
+
+---
+
+## [0.8.0] - 2025-12-31
+
+### Added
+
+- **Quality Pipeline** (Phase 6 Complete ✅)
+
+  - 5 new quality commands for multi-stage image refinement
+  - `quality.presets` — List available quality presets (DRAFT, STANDARD, HIGH)
+  - `refine` — Apply img2img refinement pass with configurable denoise
+  - `upscale` — Upscale images 2x/4x using Real-ESRGAN or SUPIR
+  - `variations` — Generate 1-8 variations from a source image
+  - `post-process` — Sharpen, color correct, and format conversion
+
+- **Quality Types** (`src/core/types.py`)
+
+  - `UpscaleModel` enum (REAL_ESRGAN, SUPIR)
+  - `OutputFormat` enum (PNG, WEBP, JPEG)
+  - `QualityPresetInfo`, `QUALITY_PRESET_CONFIGS` dict
+  - `RefinedImage`, `UpscaledImage`, `ImageVariation`, `PostProcessedImage` models
+
+- **Quality Error Codes** (`src/core/errors.py`)
+
+  - 6 new error codes: IMAGE_URL_INVALID, IMAGE_FETCH_FAILED, REFINE_FAILED, UPSCALE_FAILED, VARIATIONS_FAILED, POST_PROCESS_FAILED
+
+- **21 new tests** in `tests/test_quality.py`
+
+### Changed
+
+- CLI now has 19 commands total (7 asset/job/model + 7 lora + 5 quality)
+- Total test count: 72 tests (71 passing + 1 expected degraded health)
+- Updated AGENTS.md with Phase 6 completion status
+
+---
+
+## [0.7.0] - 2025-12-31
+
+### Added
+
+- **LoRA Training Pipeline** (Phase 5 Complete ✅)
+
+  - 7 new `lora.*` commands for custom model training
+  - `lora.create` — Create new training project with trigger word
+  - `lora.upload-images` — Upload training images with captions
+  - `lora.train` — Start training (MVP: simulates completion)
+  - `lora.status` — Get training progress and details
+  - `lora.list` — List all LoRA projects with filtering
+  - `lora.activate` — Toggle LoRA activation for inference
+  - `lora.delete` — Remove LoRA projects (blocked if active)
+
+- **LoRA Types** (`src/core/types.py`)
+
+  - `LoraStatus` enum (CREATED, UPLOADING, READY_TO_TRAIN, TRAINING, COMPLETED, FAILED)
+  - `BaseModelType` enum (FLUX, SDXL)
+  - `Lora`, `TrainingImage`, `LoraInfo` models
+
+- **LoRA Error Codes** (`src/core/errors.py`)
+  - 11 new error codes with templates and recovery suggestions
+
+### Changed
+
+- CLI now has 14 commands total (7 asset/job/model + 7 lora)
+- Updated AGENTS.md with Phase 5 completion status
+
+### Fixed
+
+- Fixed datetime serialization in CLI output (`mode="json"`)
+- Fixed `datetime.utcnow()` deprecation warnings with `_now()` helper
+
+### Technical
+
+- 22 new LoRA tests (51 total tests, 50 passing + 1 expected degraded)
+- In-memory storage pattern for MVP (ready for database backend)
+
+---
+
+## [0.6.3] - 2025-01-01
+
+### Added
+
+- **Fireworks.ai Backend** - Real AI image generation with FLUX models
+  - `FireworksGenerator` class using Fireworks REST API
+  - FLUX-1 Schnell FP8 model for fast, cost-effective generation (~$0.003/image)
+  - Support for multiple image sizes (512x512 draft, 1024x1024 standard/high)
+
+### Changed
+
+- Updated ML_BACKEND default from `mock` to `fireworks` for production
+- AGENTS.md documentation updated with Fireworks integration details
+
+### Technical
+
+- Using Fireworks `/workflows` API endpoint (not SDK's `/image_generation`)
+- Models available: `flux-1-schnell-fp8` (fast), `flux-1-dev-fp8` (high quality)
+- Images saved as JPEG to temp directory with seed-based filenames
 
 ---
 
