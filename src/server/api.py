@@ -90,7 +90,7 @@ async def process_job(job_id: str):
         )
         
         # Update job with results
-        job.status = JobStatus.COMPLETED
+        job.status = JobStatus.COMPLETE
         job.progress = 1.0
         job.images = images
         update_job(job)
