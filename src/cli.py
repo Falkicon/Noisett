@@ -35,7 +35,9 @@ from src.commands.job import (
     status as job_status,
 )
 from src.commands.lora import (
+    CleanupLoraInput,
     CreateLoraInput,
+    EstimateLoraInput,
     LoraActivateInput,
     LoraDeleteInput,
     LoraListInput,
@@ -43,8 +45,10 @@ from src.commands.lora import (
     TrainLoraInput,
     UploadImagesInput,
     activate as lora_activate,
+    cleanup as lora_cleanup,
     create as lora_create,
     delete as lora_delete,
+    estimate as lora_estimate,
     list_loras as lora_list,
     status as lora_status,
     train as lora_train,
@@ -143,6 +147,8 @@ COMMANDS: dict[str, tuple[Callable, type | None]] = {
     "lora.list": (lora_list, LoraListInput),
     "lora.activate": (lora_activate, LoraActivateInput),
     "lora.delete": (lora_delete, LoraDeleteInput),
+    "lora.estimate": (lora_estimate, EstimateLoraInput),
+    "lora.cleanup": (lora_cleanup, CleanupLoraInput),
     # Quality pipeline commands (Phase 6)
     "quality.presets": (quality_presets, QualityPresetsInput),
     "refine": (quality_refine, RefineInput),
