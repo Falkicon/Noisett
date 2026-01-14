@@ -339,6 +339,94 @@ async def get_generated_image(filename: str):
     return FileResponse(image_path, media_type=content_type)
 
 
+# --- Training SSE Endpoints (AFD Handoff Pattern) ---
+
+
+from sse_starlette.sse import EventSourceResponse
+
+
+async def training_event_generator(lora_id: str):
+    """Generate SSE events for LoRA training progress.
+    
+    Yields events in format:
+        event: progress
+        data: {"step": 100, "total": 1000, "percent": 10, "message": "..."}
+        
+        event: complete
+        data: {"lora_id": "...", "lora_url": "..."}
+        
+        event: error
+        data: {"code": "...", "message": "..."}
+    """
+    from src.commands.lora import _loras
+    from src.core.types import LoraStatus
+    import json
+    
+    # Get the LoRA
+    lora = _loras.get(lora_id)
+    if not lora:
+        yield {
+            "event": "error",
+            "data": json.dumps({"code": "LORA_NOT_FOUND", "message": f"LoRA '{lora_id}' not found"}),
+        }
+        return
+    
+    # Simulate training progress (in production, poll Replicate API)
+    for step in range(0, lora.steps + 1, lora.steps // 10 or 1):
+        # Check if still training
+        if lora.status != LoraStatus.TRAINING:
+            break
+            
+        progress = int((step / lora.steps) * 100)
+        lora.current_step = step
+        lora.progress = progress
+        
+        yield {
+            "event": "progress",
+            "data": json.dumps({
+                "step": step,
+                "total": lora.steps,
+                "percent": progress,
+                "message": f"Training step {step}/{lora.steps}",
+            }),
+        }
+        
+        # Simulate training time
+        await asyncio.sleep(0.5)
+    
+    # Mark training complete
+    from datetime import datetime, timezone
+    lora.status = LoraStatus.COMPLETED
+    lora.completed_at = datetime.now(timezone.utc)
+    lora.progress = 100
+    lora.current_step = lora.steps
+    lora.lora_url = f"https://storage.noisett.ai/loras/{lora.id}/weights.safetensors"
+    
+    yield {
+        "event": "complete",
+        "data": json.dumps({
+            "lora_id": lora.id,
+            "lora_url": lora.lora_url,
+            "trigger_word": lora.trigger_word,
+            "message": f"Training complete! Use trigger word '{lora.trigger_word}'",
+        }),
+    }
+
+
+@app.get("/api/training/{lora_id}/events")
+async def training_events(lora_id: str):
+    """SSE endpoint for real-time LoRA training progress.
+    
+    Connect with EventSource to receive progress updates:
+    - event: progress - Training step updates
+    - event: complete - Training finished successfully  
+    - event: error - Training failed
+    
+    Part of the AFD Handoff Pattern for long-running operations.
+    """
+    return EventSourceResponse(training_event_generator(lora_id))
+
+
 # --- History Endpoints (Phase 8) ---
 
 

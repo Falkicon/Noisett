@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import ErrorCode
 from afd.core import CommandResult, Warning, error, success
+from afd.core.handoff import create_handoff
 from ..core.types import (
     BaseModelType,
     Lora,
@@ -115,9 +116,21 @@ class TrainLoraInput(BaseModel):
 
 
 class TrainLoraOutput(BaseModel):
-    """Output for lora.train command."""
+    """Output for lora.train command (non-handoff mode)."""
 
     lora: Lora = Field(..., description="LoRA project with training started")
+
+
+class TrainLoraHandoffOutput(BaseModel):
+    """Output for lora.train command with SSE handoff.
+    
+    Contains the handoff result with SSE endpoint for progress streaming.
+    """
+
+    protocol: str = Field(default="sse", description="Protocol type")
+    endpoint: str = Field(..., description="SSE endpoint for training events")
+    lora_id: str = Field(..., description="LoRA ID being trained")
+    credentials: dict | None = Field(default=None, description="Auth credentials if needed")
 
 
 class LoraStatusInput(BaseModel):
@@ -384,7 +397,7 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
             suggestion=f"Upload {lora.min_images - len(lora.images)} more images first",
         )
 
-    # Start training (in MVP, this is simulated)
+    # Start training and return SSE handoff for progress streaming
     now = _now()
     lora.status = LoraStatus.TRAINING
     lora.training_started_at = now
@@ -392,19 +405,25 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
     lora.current_step = 0
     lora.error_message = None
 
-    # Simulate training completion for MVP
-    # In production, this would start a Replicate training job
-    lora.status = LoraStatus.COMPLETED
-    lora.completed_at = now
-    lora.progress = 100
-    lora.current_step = lora.steps
-    lora.lora_url = f"https://storage.noisett.ai/loras/{lora.id}/weights.safetensors"
+    # Create SSE handoff for real-time progress
+    # In production: start Replicate training job and return handoff
+    handoff = create_handoff(
+        protocol="sse",
+        endpoint=f"/api/training/{lora.id}/events",
+        capabilities=["progress", "logs", "completion"],
+        reconnect_allowed=True,
+        reconnect_max_attempts=5,
+        reconnect_backoff_ms=1000,
+        description=f"Training progress for '{lora.name}'",
+    )
 
     return success(
-        data=TrainLoraOutput(lora=lora),
-        reasoning=f"Training completed for '{lora.name}' using {len(lora.images)} images. "
-        f"LoRA is ready to use with trigger word '{lora.trigger_word}'.",
-        suggestions=["Activate for generation: lora.activate", "Test with: asset.generate"],
+        data=handoff,
+        reasoning=f"Training started for '{lora.name}'. Connect to SSE endpoint for real-time progress.",
+        suggestions=[
+            f"Connect to SSE: /api/training/{lora.id}/events",
+            "Check status: lora.status",
+        ],
     )
 
 

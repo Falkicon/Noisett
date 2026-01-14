@@ -21,6 +21,24 @@ from src.commands.lora import (
 from src.core.types import BaseModelType, LoraStatus
 
 
+def _complete_training(lora_id: str):
+    """Helper to simulate completed training for tests.
+    
+    Since train() now returns a handoff, tests that need a completed
+    LoRA should call this after train().
+    """
+    from datetime import datetime, timezone
+    from src.commands.lora import _loras
+    
+    lora = _loras.get(lora_id)
+    if lora:
+        lora.status = LoraStatus.COMPLETED
+        lora.completed_at = datetime.now(timezone.utc)
+        lora.progress = 100
+        lora.current_step = lora.steps
+        lora.lora_url = f"https://storage.noisett.ai/loras/{lora.id}/weights.safetensors"
+
+
 @pytest.fixture(autouse=True)
 def clean_storage():
     """Reset storage before each test."""
@@ -209,7 +227,7 @@ async def test_upload_images_insufficient_warning():
 
 @pytest.mark.asyncio
 async def test_train_success():
-    """Test successful training start."""
+    """Test successful training start returns SSE handoff."""
     # Create and upload images
     create_result = await create(
         CreateLoraInput(name="Test LoRA", trigger_word="teststyle")
@@ -219,14 +237,15 @@ async def test_train_success():
     images = [{"url": f"https://example.com/img{i}.jpg"} for i in range(15)]
     await upload_images(UploadImagesInput(lora_id=lora_id, images=images))
 
-    # Start training
+    # Start training - now returns handoff
     result = await train(TrainLoraInput(lora_id=lora_id))
 
     assert result.success is True
     assert result.data is not None
-    # In MVP, training completes immediately
-    assert result.data.lora.status == LoraStatus.COMPLETED
-    assert result.data.lora.lora_url is not None
+    # Check handoff structure
+    assert result.data["protocol"] == "sse"
+    assert f"/api/training/{lora_id}/events" in result.data["endpoint"]
+    assert "progress" in result.data["metadata"]["capabilities"]
 
 
 @pytest.mark.asyncio
@@ -334,6 +353,7 @@ async def test_list_filter_by_status():
     images = [{"url": f"https://example.com/img{i}.jpg"} for i in range(15)]
     await upload_images(UploadImagesInput(lora_id=lora_id, images=images))
     await train(TrainLoraInput(lora_id=lora_id))
+    _complete_training(lora_id)  # Complete training for test
 
     # Create another that stays in CREATED
     await create(CreateLoraInput(name="New LoRA", trigger_word="newstyle"))
@@ -363,6 +383,7 @@ async def test_activate_success():
     images = [{"url": f"https://example.com/img{i}.jpg"} for i in range(15)]
     await upload_images(UploadImagesInput(lora_id=lora_id, images=images))
     await train(TrainLoraInput(lora_id=lora_id))
+    _complete_training(lora_id)  # Complete training for test
 
     # Activate
     result = await activate(LoraActivateInput(lora_id=lora_id, active=True))
@@ -399,6 +420,7 @@ async def test_deactivate_success():
     images = [{"url": f"https://example.com/img{i}.jpg"} for i in range(15)]
     await upload_images(UploadImagesInput(lora_id=lora_id, images=images))
     await train(TrainLoraInput(lora_id=lora_id))
+    _complete_training(lora_id)  # Complete training for test
     await activate(LoraActivateInput(lora_id=lora_id, active=True))
 
     # Deactivate
@@ -453,6 +475,7 @@ async def test_delete_active_fails():
     images = [{"url": f"https://example.com/img{i}.jpg"} for i in range(15)]
     await upload_images(UploadImagesInput(lora_id=lora_id, images=images))
     await train(TrainLoraInput(lora_id=lora_id))
+    _complete_training(lora_id)  # Complete training for test
     await activate(LoraActivateInput(lora_id=lora_id, active=True))
 
     # Try to delete
