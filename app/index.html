@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noisett — AI Brand Asset Generator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="logo">🎨</span>
+        <h1>Noisett</h1>
+      </div>
+      <nav class="nav">
+        <button class="nav-tab active" data-tab="generate">Generate</button>
+        <button class="nav-tab" data-tab="loras">LoRAs</button>
+        <button class="nav-tab" data-tab="history">History</button>
+        <button class="nav-tab" data-tab="favorites">Favorites</button>
+      </nav>
+      <div class="header-status">
+        <span id="status-indicator" class="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Generate Tab -->
+      <section id="tab-generate" class="tab-content active">
+        <div class="generate-layout">
+          <!-- Input Panel -->
+          <div class="panel panel-input">
+            <h2 class="panel-title">Create Assets</h2>
+            
+            <div class="form-group">
+              <label for="prompt">Describe what you need</label>
+              <textarea 
+                id="prompt" 
+                placeholder="A modern illustration of a person collaborating with AI..."
+                rows="4"
+              ></textarea>
+              <span class="char-count"><span id="char-current">0</span>/500</span>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="asset-type">Asset Type</label>
+                <select id="asset-type">
+                  <option value="product">Product Illustrations</option>
+                  <option value="icons">Icons (Fluent 2)</option>
+                  <option value="logo">Logo Illustrations</option>
+                  <option value="premium">Premium Illustrations</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="quality">Quality</label>
+                <select id="quality">
+                  <option value="draft">Draft (~10s)</option>
+                  <option value="standard" selected>Standard (~25s)</option>
+                  <option value="high">High (~45s)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="lora-select">Style (LoRA)</label>
+              <select id="lora-select">
+                <option value="">None (Default)</option>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <button id="generate-btn" class="btn btn-primary btn-large">
+              <span class="btn-icon">✨</span>
+              Generate
+            </button>
+          </div>
+
+          <!-- Results Panel -->
+          <div class="panel panel-results">
+            <div id="results-empty" class="empty-state">
+              <span class="empty-icon">🖼️</span>
+              <p>Your generated images will appear here</p>
+            </div>
+            <div id="results-loading" class="loading-state hidden">
+              <div class="spinner"></div>
+              <p>Generating <span id="loading-count">1</span> variations...</p>
+              <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+              </div>
+              <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+            <div id="results-grid" class="image-grid hidden">
+              <!-- Images populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LoRAs Tab -->
+      <section id="tab-loras" class="tab-content hidden">
+        <div class="loras-layout">
+          <!-- LoRA List -->
+          <div class="panel panel-list">
+            <div class="panel-header">
+              <h2 class="panel-title">Your Styles</h2>
+              <button id="create-lora-btn" class="btn btn-primary btn-small">+ New LoRA</button>
+            </div>
+            <div id="lora-list" class="lora-list">
+              <!-- LoRAs populated dynamically -->
+            </div>
+          </div>
+
+          <!-- LoRA Detail / Create -->
+          <div class="panel panel-detail">
+            <div id="lora-empty" class="empty-state">
+              <span class="empty-icon">🎨</span>
+              <p>Select a LoRA or create a new one</p>
+            </div>
+            
+            <!-- Create Form (hidden by default) -->
+            <div id="lora-create-form" class="lora-form hidden">
+              <h2 class="panel-title">Create New LoRA</h2>
+              
+              <div class="form-group">
+                <label for="lora-name">Name</label>
+                <input type="text" id="lora-name" placeholder="Brand Icons Style">
+              </div>
+              
+              <div class="form-group">
+                <label for="lora-trigger">Trigger Word</label>
+                <input type="text" id="lora-trigger" placeholder="brandicons">
+                <span class="hint">Use this word in prompts to activate the style</span>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="lora-model">Base Model</label>
+                  <select id="lora-model">
+                    <option value="flux">Flux</option>
+                    <option value="sdxl">SDXL</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="lora-steps">Training Steps</label>
+                  <input type="number" id="lora-steps" value="1000" min="100" max="5000">
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button id="lora-create-submit" class="btn btn-primary">Create LoRA</button>
+                <button id="lora-create-cancel" class="btn btn-secondary">Cancel</button>
+              </div>
+            </div>
+
+            <!-- LoRA Detail View (hidden by default) -->
+            <div id="lora-detail" class="lora-detail hidden">
+              <div class="lora-detail-header">
+                <h2 id="lora-detail-name" class="panel-title">LoRA Name</h2>
+                <span id="lora-detail-status" class="status-badge">created</span>
+              </div>
+              
+              <div class="lora-meta">
+                <div class="meta-item">
+                  <span class="meta-label">Trigger:</span>
+                  <code id="lora-detail-trigger">triggername</code>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Model:</span>
+                  <span id="lora-detail-model">flux</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Images:</span>
+                  <span id="lora-detail-images">0</span>
+                </div>
+              </div>
+
+              <!-- Image Upload -->
+              <div id="upload-section" class="upload-section">
+                <h3>Training Images</h3>
+                <div id="upload-dropzone" class="dropzone">
+                  <span class="dropzone-icon">📁</span>
+                  <p>Drag & drop images here</p>
+                  <span class="dropzone-hint">or click to browse (5-100 images, 512×512 min)</span>
+                  <input type="file" id="upload-input" multiple accept="image/png,image/jpeg" hidden>
+                </div>
+                <div id="upload-preview" class="upload-preview"></div>
+              </div>
+
+              <!-- Training Progress -->
+              <div id="training-section" class="training-section hidden">
+                <h3>Training Progress</h3>
+                <div class="progress-bar">
+                  <div id="training-progress-fill" class="progress-fill"></div>
+                </div>
+                <p id="training-status">Preparing...</p>
+              </div>
+
+              <div class="lora-actions">
+                <button id="lora-train-btn" class="btn btn-primary">Start Training</button>
+                <button id="lora-delete-btn" class="btn btn-danger">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- History Tab -->
+      <section id="tab-history" class="tab-content hidden">
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Generation History</h2>
+            <select id="history-filter" class="filter-select">
+              <option value="">All</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+          <div id="history-list" class="history-list">
+            <!-- History items populated dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Favorites Tab -->
+      <section id="tab-favorites" class="tab-content hidden">
+        <div class="panel">
+          <h2 class="panel-title">Favorites</h2>
+          <div id="favorites-grid" class="image-grid">
+            <!-- Favorites populated dynamically -->
+          </div>
+          <div id="favorites-empty" class="empty-state hidden">
+            <span class="empty-icon">⭐</span>
+            <p>No favorites yet. Star images you want to keep!</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

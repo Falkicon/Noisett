@@ -29,15 +29,10 @@ class ImageGenerator(ABC):
 
 
 class MockGenerator(ImageGenerator):
-    """Mock generator that returns placeholder images for testing."""
+    """Mock generator that creates simple placeholder images for testing."""
 
-    # Placeholder image URLs (1024x1024 colored squares)
-    PLACEHOLDER_URLS = [
-        "https://placehold.co/1024x1024/107C10/white?text=Generated+1",
-        "https://placehold.co/1024x1024/0078D4/white?text=Generated+2",
-        "https://placehold.co/1024x1024/5C2D91/white?text=Generated+3",
-        "https://placehold.co/1024x1024/D83B01/white?text=Generated+4",
-    ]
+    # Colors for placeholder images
+    COLORS = ["#107C10", "#0078D4", "#5C2D91", "#D83B01"]
 
     async def generate(
         self,
@@ -47,16 +42,44 @@ class MockGenerator(ImageGenerator):
         quality: QualityPreset,
         count: int,
     ) -> list[GeneratedImage]:
-        """Return placeholder images instantly."""
+        """Generate placeholder images with colored backgrounds."""
         import random
+        import tempfile
+        from pathlib import Path
+        import asyncio
+        
+        # Simulate processing time (1-2 seconds)
+        await asyncio.sleep(1.5)
+        
+        output_dir = Path(tempfile.gettempdir()) / "noisett"
+        output_dir.mkdir(exist_ok=True)
 
         images = []
         for i in range(count):
             seed = random.randint(1, 999999)
+            color = self.COLORS[i % len(self.COLORS)]
+            short_prompt = prompt[:30].replace('"', "'").replace('<', '').replace('>', '')
+            
+            # Create simple SVG placeholder using concatenation to avoid encoding issues
+            svg_lines = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">',
+                f'  <rect width="100%" height="100%" fill="{color}"/>',
+                f'  <text x="512" y="480" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" fill="white">Generated #{i+1}</text>',
+                f'  <text x="512" y="550" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="white" opacity="0.7">{short_prompt}</text>',
+                f'  <text x="512" y="600" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="white" opacity="0.5">Mock - Seed: {seed}</text>',
+                '</svg>',
+            ]
+            svg_content = '\n'.join(svg_lines)
+            
+            filename = f"mock_{i}_{seed}.svg"
+            filepath = output_dir / filename
+            filepath.write_text(svg_content, encoding='utf-8')
+            
             images.append(
                 GeneratedImage(
                     index=i,
-                    url=self.PLACEHOLDER_URLS[i % len(self.PLACEHOLDER_URLS)],
+                    url=f"/api/images/{filename}",
                     width=1024,
                     height=1024,
                     seed=seed,
@@ -252,14 +275,10 @@ class FireworksGenerator(ImageGenerator):
 
 
 class ReplicateGenerator(ImageGenerator):
-    """Generator using Replicate API (supports HiDream, FLUX, SD3.5)."""
+    """Generator using Replicate API (FLUX dev-lora for high quality generation)."""
 
-    # Model mappings to Replicate model versions
-    MODEL_VERSIONS = {
-        ModelId.HIDREAM: "mcai/hidream-i1-full:50c0e2241017e6713ab94a5f984e6b1e9646dc95ef0d60e7a3045017e7d1e33c",
-        ModelId.FLUX: "black-forest-labs/flux-1.1-pro",
-        ModelId.SD35: "stability-ai/stable-diffusion-3.5-large",
-    }
+    # Using FLUX dev-lora - works without version hash
+    MODEL_ID = "black-forest-labs/flux-dev-lora"
 
     def __init__(self):
         self.api_token = os.environ.get("REPLICATE_API_TOKEN")
@@ -277,13 +296,9 @@ class ReplicateGenerator(ImageGenerator):
         quality: QualityPreset,
         count: int,
     ) -> list[GeneratedImage]:
-        """Generate images using Replicate API."""
+        """Generate images using Replicate FLUX dev-lora API."""
         import replicate
-
-        # Get model version
-        model_version = self.MODEL_VERSIONS.get(model)
-        if not model_version:
-            raise ValueError(f"Model {model} not supported on Replicate")
+        import random
 
         # Build enhanced prompt based on asset type
         from src.core.types import ASSET_TYPE_CONFIGS
@@ -291,27 +306,45 @@ class ReplicateGenerator(ImageGenerator):
         asset_config = ASSET_TYPE_CONFIGS[asset_type]
         enhanced_prompt = asset_config.prompt_template.replace("{subject}", prompt)
 
-        # Quality to steps mapping
-        steps_map = {"draft": 20, "standard": 28, "high": 50}
+        # Quality to inference steps mapping
+        steps_map = {"draft": 20, "standard": 28, "high": 40}
         num_steps = steps_map.get(quality.value, 28)
+        
+        # Quality to output_quality mapping
+        quality_map = {"draft": 70, "standard": 85, "high": 95}
+        output_quality = quality_map.get(quality.value, 85)
 
         images = []
         for i in range(count):
-            # Run prediction
+            seed = random.randint(1, 999999)
+            
+            # Debug: print what we're doing
+            print(f"[REPLICATE] Using model: {self.MODEL_ID}")
+            print(f"[REPLICATE] Prompt: {enhanced_prompt[:50]}...")
+            
+            # Run prediction with FLUX dev-lora params
             output = await replicate.async_run(
-                model_version,
+                self.MODEL_ID,
                 input={
                     "prompt": enhanced_prompt,
-                    "negative_prompt": asset_config.negative_prompt,
+                    "go_fast": True,
+                    "guidance": 3,
+                    "megapixels": "1",
+                    "num_outputs": 1,
+                    "aspect_ratio": "1:1",
+                    "output_format": "webp",
+                    "output_quality": output_quality,
                     "num_inference_steps": num_steps,
-                    "width": 1024,
-                    "height": 1024,
+                    "seed": seed,
                 },
             )
 
-            # Handle different output formats
-            if isinstance(output, list):
-                url = output[0] if output else None
+            # Handle output - FLUX returns a list of FileOutput objects
+            if isinstance(output, list) and len(output) > 0:
+                item = output[0]
+                url = item.url if hasattr(item, 'url') else str(item)
+            elif hasattr(output, 'url'):
+                url = output.url
             else:
                 url = str(output)
 
@@ -322,6 +355,7 @@ class ReplicateGenerator(ImageGenerator):
                         url=url,
                         width=1024,
                         height=1024,
+                        seed=seed,
                     )
                 )
 

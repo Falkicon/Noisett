@@ -177,7 +177,7 @@ async def asset_generate(
     asset_type: str = "product",
     model: str = "hidream",
     quality: str = "standard",
-    count: int = 4,
+    count: int = 1,
 ) -> dict:
     """Generate brand-aligned images from a text prompt.
     

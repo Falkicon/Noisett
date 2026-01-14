@@ -120,6 +120,14 @@ async def validate_jwt(token: str) -> User | None:
                 logger.debug("JWT cryptographically validated for user: %s", payload.get("oid"))
                 
             except ImportError:
+                # SECURITY: If auth is required but crypto isn't available, fail closed
+                if AUTH_REQUIRED:
+                    logger.error(
+                        "AUTH_REQUIRED=true but pyjwt[crypto] not installed. "
+                        "Token validation cannot proceed securely. "
+                        "Install with: pip install pyjwt[crypto]"
+                    )
+                    return None
                 logger.warning(
                     "pyjwt[crypto] not installed - falling back to basic validation. "
                     "Install with: pip install pyjwt[crypto]"

@@ -20,6 +20,9 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file
+
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +31,9 @@ from pydantic import BaseModel, Field
 
 from src.core.types import AssetType, ModelId, QualityPreset, JobStatus
 from src.core.convex_client import get_convex_client
+
+# Configuration
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 
 # --- Request/Response Models ---
@@ -40,7 +46,7 @@ class GenerateRequest(BaseModel):
     asset_type: str = Field(default="product", description="Type of asset to generate")
     model: str = Field(default="hidream", description="Model to use")
     quality: str = Field(default="standard", description="Quality preset")
-    count: int = Field(default=4, ge=1, le=4, description="Number of variations")
+    count: int = Field(default=1, ge=1, le=4, description="Number of variations")
     lora: str | None = Field(default=None, description="LoRA ID to use for styled generation")
 
 
@@ -58,10 +64,24 @@ async def process_job(job_id: str):
     from src.commands.asset import get_job, update_job
     from src.core.types import JobStatus
     
+    # File-based debug logging (stdout may not work in background tasks)
+    def debug_log(msg):
+        import datetime
+        with open("debug_process_job.log", "a") as f:
+            f.write(f"[{datetime.datetime.now()}] {msg}\n")
+        print(msg)  # Also try stdout
+    
+    debug_log(f"[PROCESS_JOB] Starting job {job_id}")
+    debug_log(f"[PROCESS_JOB] ML_BACKEND: {os.environ.get('ML_BACKEND', 'mock')}")
+    debug_log(f"[PROCESS_JOB] REPLICATE_API_TOKEN set: {bool(os.environ.get('REPLICATE_API_TOKEN'))}")
+    
     # Get the job
     job = get_job(job_id)
     if not job or job.status != JobStatus.QUEUED:
+        debug_log(f"[PROCESS_JOB] Job not found or not queued, exiting")
         return
+    
+    debug_log(f"[PROCESS_JOB] Job found: {job.prompt}")
     
     # Update to processing
     job.status = JobStatus.PROCESSING
@@ -150,6 +170,7 @@ async def process_job(job_id: str):
             # Regular generation without LoRA
             # Get the appropriate generator based on ML_BACKEND env var
             backend = os.environ.get("ML_BACKEND", "mock")
+            print(f"[DEBUG] ML_BACKEND selected: '{backend}'")
 
             if backend == "mock":
                 from src.ml import MockGenerator
@@ -260,6 +281,70 @@ async def health_check():
         "gpu_available": gpu_available,
         "environment": os.getenv("NOISETT_ENV", "development"),
     }
+
+
+# --- Debug: Direct Replicate Test ---
+
+
+@app.get("/api/test-replicate")
+async def test_replicate():
+    """Direct Replicate API test to debug the 422 error.
+    
+    This bypasses all job processing to isolate the Replicate call.
+    Only available when DEBUG=true environment variable is set.
+    """
+    # SECURITY: Only allow in debug mode to prevent production abuse
+    if not DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    import replicate
+    
+    try:
+        # Log what we're doing
+        token = os.environ.get("REPLICATE_API_TOKEN", "NOT SET")
+        print(f"[TEST] Token: {token[:10]}... (hidden)")
+        print(f"[TEST] Calling black-forest-labs/flux-dev-lora...")
+        
+        output = await replicate.async_run(
+            "black-forest-labs/flux-dev-lora",
+            input={
+                "prompt": "a simple laptop illustration",
+                "go_fast": True,
+                "guidance": 3,
+                "megapixels": "1",
+                "num_outputs": 1,
+                "aspect_ratio": "1:1",
+                "output_format": "webp",
+                "output_quality": 80,
+                "num_inference_steps": 20,
+            },
+        )
+        
+        # Parse output
+        if isinstance(output, list) and len(output) > 0:
+            item = output[0]
+            url = item.url if hasattr(item, 'url') else str(item)
+        else:
+            url = str(output)
+            
+        return {
+            "success": True,
+            "data": {"url": url},
+            "reasoning": "Direct Replicate test succeeded!",
+        }
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[TEST] Error: {error_details}")
+        return {
+            "success": False,
+            "error": {
+                "message": str(e),
+                "details": error_details,
+            },
+            "reasoning": "Direct Replicate test failed",
+        }
 
 
 # --- Asset Endpoints ---
@@ -373,6 +458,78 @@ async def list_jobs(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# --- LoRA Management Endpoints ---
+
+
+class LoraCreateRequest(BaseModel):
+    """Request body for LoRA creation."""
+    name: str = Field(..., min_length=1, max_length=100)
+    trigger_word: str = Field(..., min_length=1, max_length=50)
+    base_model: str = Field(default="flux")
+    steps: int = Field(default=1000, ge=100, le=5000)
+
+
+@app.get("/api/loras")
+async def list_loras():
+    """List all LoRAs from Convex."""
+    try:
+        convex = get_convex_client()
+        loras = await convex.list_loras()
+        return {"success": True, "data": loras}
+    except Exception as e:
+        logging.error(f"Failed to list LoRAs: {e}")
+        return {"success": True, "data": []}  # Return empty on error
+
+
+@app.post("/api/loras")
+async def create_lora(request: LoraCreateRequest):
+    """Create a new LoRA in Convex."""
+    try:
+        convex = get_convex_client()
+        lora_data = {
+            "name": request.name,
+            "triggerWord": request.trigger_word,
+            "baseModel": request.base_model,
+            "steps": request.steps,
+            "status": "created",
+            "isActive": False,
+            "createdAt": int(time.time() * 1000),  # JS timestamp
+        }
+        result = await convex.create_lora(lora_data)
+        return {"success": True, "data": {"id": result}}
+    except Exception as e:
+        logging.error(f"Failed to create LoRA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/loras/{lora_id}")
+async def get_lora(lora_id: str):
+    """Get a specific LoRA by ID."""
+    try:
+        convex = get_convex_client()
+        lora = await convex.get_lora(lora_id)
+        if not lora:
+            raise HTTPException(status_code=404, detail="LoRA not found")
+        return {"success": True, "data": lora}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to get LoRA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/loras/{lora_id}")
+async def delete_lora_endpoint(lora_id: str):
+    """Delete a LoRA from Convex."""
+    try:
+        convex = get_convex_client()
+        await convex.delete_lora(lora_id)
+        return {"success": True}
+    except Exception as e:
+        logging.error(f"Failed to delete LoRA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Model Endpoints ---
 
 
@@ -421,7 +578,12 @@ async def get_generated_image(filename: str):
         raise HTTPException(status_code=404, detail="Image not found")
     
     # Determine content type
-    content_type = "image/jpeg" if filename.endswith(".jpg") else "image/png"
+    if filename.endswith(".jpg") or filename.endswith(".jpeg"):
+        content_type = "image/jpeg"
+    elif filename.endswith(".svg"):
+        content_type = "image/svg+xml"
+    else:
+        content_type = "image/png"
     
     return FileResponse(image_path, media_type=content_type)
 
@@ -647,7 +809,7 @@ async def generate_upload_url(lora_id: str):
             else:
                 raise HTTPException(status_code=400, detail=result.error.message if result.error else "Failed to get LoRA status")
 
-        lora = result.data
+        lora = result.data.lora
 
         # Check if LoRA is in a valid state for image uploads
         valid_statuses = ["created", "uploading", "ready_to_train"]

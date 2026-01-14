@@ -52,7 +52,7 @@ class AssetGenerateInput(BaseModel):
         description="Quality preset affecting speed vs quality",
     )
     count: int = Field(
-        default=4,
+        default=1,
         ge=1,
         le=4,
         description="Number of variations to generate",
