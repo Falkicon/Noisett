@@ -278,4 +278,24 @@ http.route({
   }),
 });
 
+// Storage URL endpoint (get download URL for a storage ID)
+http.route({
+  path: "/api/storage/get-url",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const storageId = url.searchParams.get("storageId");
+    if (!storageId) {
+      return new Response(JSON.stringify({ error: "storageId parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const downloadUrl = await ctx.storage.getUrl(storageId);
+    return new Response(JSON.stringify({ url: downloadUrl }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
 export default http;

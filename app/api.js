@@ -3,7 +3,8 @@
  * Complete API surface for all backend endpoints
  */
 const API = {
-  baseUrl: 'http://localhost:8001',
+  baseUrl: 'http://localhost:8000',
+  convexUrl: 'https://neighborly-gazelle-692.convex.site',
 
   async request(method, path, body = null) {
     const options = {

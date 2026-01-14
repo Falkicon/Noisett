@@ -295,7 +295,7 @@ function showLoraDetail() {
   $('#lora-detail-status').className = `status-badge ${lora.status}`;
   $('#lora-detail-trigger').textContent = lora.triggerWord;
   $('#lora-detail-model').textContent = lora.baseModel;
-  $('#lora-detail-images').textContent = '0'; // TODO: fetch image count
+  $('#lora-detail-images').textContent = '...'; // Loading
 
   // Show/hide sections based on status
   const canUpload = ['created', 'uploading', 'ready_to_train'].includes(lora.status);
@@ -304,6 +304,50 @@ function showLoraDetail() {
   $('#upload-section').classList.toggle('hidden', !canUpload);
   $('#training-section').classList.toggle('hidden', !isTraining);
   $('#lora-train-btn').classList.toggle('hidden', lora.status !== 'ready_to_train');
+  
+  // Fetch and display training images
+  loadTrainingImages(lora._id);
+}
+
+async function loadTrainingImages(loraId) {
+  try {
+    const response = await API.request('GET', `/api/lora/${loraId}/training-images`);
+    
+    if (!response.success) {
+      console.error('Failed to load training images:', response);
+      return;
+    }
+    
+    const images = response.data || [];
+    $('#lora-detail-images').textContent = images.length;
+    
+    // Display images in the upload preview area
+    const preview = $('#upload-preview');
+    preview.innerHTML = '';
+    
+    for (const img of images) {
+      const div = document.createElement('div');
+      div.className = 'upload-preview-item uploaded';
+      
+      // Use the pre-resolved URL from the API
+      if (img.url) {
+        div.innerHTML = `<img src="${img.url}" alt="${img.filename}" title="${img.filename}">`;
+      } else {
+        div.innerHTML = `<span class="error-icon">⚠️</span>`;
+        div.title = 'Image not found';
+      }
+      preview.appendChild(div);
+    }
+    
+    // Show train button if we have enough images
+    if (images.length >= 5) {
+      $('#lora-train-btn').classList.remove('hidden');
+    }
+    
+  } catch (error) {
+    console.error('Failed to load training images:', error);
+    $('#lora-detail-images').textContent = '?';
+  }
 }
 
 function setupLoras() {

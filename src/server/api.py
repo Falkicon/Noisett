@@ -602,10 +602,21 @@ async def create_training_image(request: TrainingImageRequest):
 
 @app.get("/api/lora/{lora_id}/training-images")
 async def list_training_images(lora_id: str):
-    """List training images for a LoRA."""
+    """List training images for a LoRA with resolved storage URLs."""
     try:
         convex = get_convex_client()
         images = await convex.list_training_images_by_lora(lora_id)
+        
+        # Resolve storage URLs for each image
+        for img in images:
+            if img.get("storageId"):
+                try:
+                    url_data = await convex.get_storage_url(img["storageId"])
+                    img["url"] = url_data
+                except Exception as e:
+                    logging.warning(f"Failed to get URL for {img.get('filename')}: {e}")
+                    img["url"] = None
+        
         return {"success": True, "data": images}
     except Exception as e:
         logging.error(f"Failed to list training images: {e}")

@@ -319,6 +319,22 @@ class ConvexClient:
         result = await self._make_request("GET", "/api/storage/usage")
         return result
 
+    async def get_storage_url(self, storage_id: str) -> Optional[str]:
+        """Get download URL for a storage ID.
+
+        Args:
+            storage_id: Convex storage ID
+
+        Returns:
+            Signed download URL or None if not found
+        """
+        result = await self._make_request(
+            "GET",
+            "/api/storage/get-url",
+            params={"storageId": storage_id}
+        )
+        return result.get("url")
+
     # Webhook event operations
 
     async def create_webhook_event(self, event_data: Dict[str, Any]) -> str:
