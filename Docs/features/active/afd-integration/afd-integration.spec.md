@@ -51,9 +51,9 @@ dependencies = [
 - [x] Contributed `suggestions` field to AFD (v0.1.1)
 - [x] 100/100 tests passing
 
-### Phase 3: Add Command Taxonomy Tags (Optional)
-- [ ] Add `tags` and `mutation` fields to all command modules
-- [ ] Add bootstrap tools to MCP server (`noisett_help`, `noisett_docs`)
+### Phase 3: Add Command Taxonomy Tags ✅
+- [x] Add `tags` and `mutation` fields to all command modules
+- [x] Add bootstrap tools to MCP server (`noisett_help`, `noisett_docs`, `noisett_schema`)
 
 ### Phase 4: Handoff Pattern for Training (Deferred)
 - [ ] Use `from afd.core.handoff import HandoffResult`
