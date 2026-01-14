@@ -196,7 +196,10 @@ class LoraStatus(str, Enum):
     READY_TO_TRAIN = "ready_to_train"  # Images uploaded, awaiting train command
     TRAINING = "training"  # Training in progress
     COMPLETED = "completed"  # Training complete, LoRA ready
+    DEPLOYMENT_PENDING = "deployment_pending"  # Training done, deploying to Fireworks
+    DEPLOYMENT_FAILED = "deployment_failed"  # Fireworks deployment failed
     FAILED = "failed"  # Training failed
+    DEPLOYED = "deployed"  # Deployed and ready for inference
 
 
 class BaseModelType(str, Enum):

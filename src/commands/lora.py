@@ -11,6 +11,7 @@ Commands for creating, managing, and training custom LoRA models:
 """
 
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 from ..core.errors import ErrorCode
 from afd.core import CommandResult, Warning, error, success
 from afd.core.handoff import create_handoff
+from ..core.convex_client import get_convex_client, ConvexError
 from ..core.types import (
     BaseModelType,
     Lora,
@@ -29,10 +31,8 @@ from ..core.types import (
 
 
 # =============================================================================
-# In-Memory Storage (MVP - will be replaced with persistent storage in Phase 8)
+# Helper Functions
 # =============================================================================
-
-_loras: dict[str, Lora] = {}
 
 
 def _generate_lora_id() -> str:
@@ -43,6 +43,70 @@ def _generate_lora_id() -> str:
 def _now() -> datetime:
     """Get current UTC time with timezone awareness."""
     return datetime.now(timezone.utc)
+
+
+def _now_timestamp() -> int:
+    """Get current UTC time as timestamp in milliseconds."""
+    return int(time.time() * 1000)
+
+
+def _datetime_to_timestamp(dt: datetime) -> int:
+    """Convert datetime to timestamp in milliseconds."""
+    return int(dt.timestamp() * 1000)
+
+
+def _timestamp_to_datetime(ts: int) -> datetime:
+    """Convert timestamp in milliseconds to datetime."""
+    return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+
+
+def _convex_to_lora(convex_data: dict) -> Lora:
+    """Convert Convex LoRA data to Lora object."""
+    return Lora(
+        id=convex_data["_id"],
+        name=convex_data["name"],
+        description=convex_data.get("description"),
+        trigger_word=convex_data["triggerWord"],
+        base_model=BaseModelType(convex_data["baseModel"]),
+        status=LoraStatus(convex_data["status"]),
+        steps=convex_data["steps"],
+        learning_rate=1e-4,  # Default learning rate, not stored in Convex yet
+        is_active=convex_data["isActive"],
+        created_at=_timestamp_to_datetime(convex_data["createdAt"]),
+        training_started_at=_timestamp_to_datetime(convex_data["trainStartedAt"]) if convex_data.get("trainStartedAt") else None,
+        completed_at=_timestamp_to_datetime(convex_data["completedAt"]) if convex_data.get("completedAt") else None,
+        progress=convex_data.get("progress", 0),  # Default to 0 if None
+        current_step=convex_data.get("currentStep", 0),  # Default to 0 if None
+        error_message=convex_data.get("errorMessage"),
+        images=[],  # TODO: Load from trainingImages table in Phase 2
+    )
+
+
+def _lora_to_convex(lora: Lora, lora_id: str = None) -> dict:
+    """Convert Lora object to Convex data."""
+    convex_data = {
+        "name": lora.name,
+        "triggerWord": lora.trigger_word,
+        "description": lora.description,
+        "baseModel": lora.base_model.value,
+        "status": lora.status.value,
+        "steps": lora.steps,
+        "isActive": lora.is_active,
+        "createdAt": _datetime_to_timestamp(lora.created_at),
+    }
+
+    if lora.training_started_at:
+        convex_data["trainStartedAt"] = _datetime_to_timestamp(lora.training_started_at)
+    if lora.completed_at:
+        convex_data["completedAt"] = _datetime_to_timestamp(lora.completed_at)
+    if lora.progress is not None:
+        convex_data["progress"] = lora.progress
+    if lora.current_step is not None:
+        convex_data["currentStep"] = lora.current_step
+    if lora.error_message:
+        convex_data["errorMessage"] = lora.error_message
+
+    return convex_data
 
 
 # =============================================================================
@@ -203,390 +267,490 @@ class LoraDeleteOutput(BaseModel):
 
 async def create(input: CreateLoraInput) -> CommandResult[CreateLoraOutput]:
     """Create a new LoRA training project.
-    
+
     This creates a project container for LoRA training. Next step is to
     upload training images with lora.upload-images.
     """
-    # Check for duplicate name
-    for lora in _loras.values():
-        if lora.name.lower() == input.name.lower():
-            return error(
-                code=ErrorCode.LORA_ALREADY_EXISTS,
-                message=f"A LoRA named '{input.name}' already exists",
-                suggestion="Use a different name or delete the existing LoRA",
-            )
+    try:
+        convex = get_convex_client()
 
-    # Check for duplicate trigger word
-    for lora in _loras.values():
-        if lora.trigger_word.lower() == input.trigger_word.lower():
+        # Check for duplicate trigger word
+        existing_lora = await convex.get_lora_by_trigger_word(input.trigger_word.lower())
+        if existing_lora:
             return error(
                 code=ErrorCode.LORA_ALREADY_EXISTS,
                 message=f"Trigger word '{input.trigger_word}' is already in use",
                 suggestion="Use a different trigger word",
             )
 
-    # Create the LoRA
-    lora_id = _generate_lora_id()
-    now = _now()
-
-    lora = Lora(
-        id=lora_id,
-        name=input.name,
-        description=input.description,
-        trigger_word=input.trigger_word,
-        base_model=input.base_model,
-        status=LoraStatus.CREATED,
-        steps=input.steps,
-        learning_rate=input.learning_rate,
-        created_at=now,
-    )
-
-    _loras[lora_id] = lora
-
-    warnings = []
-    if input.base_model == BaseModelType.FLUX:
-        warnings.append(
-            Warning(
-                code="FLUX_NON_COMMERCIAL",
-                message="FLUX base model is non-commercial. Resulting LoRA inherits this license.",
-            )
+        # Create the LoRA
+        now = _now()
+        lora = Lora(
+            id="",  # Will be set from Convex
+            name=input.name,
+            description=input.description,
+            trigger_word=input.trigger_word,
+            base_model=input.base_model,
+            status=LoraStatus.CREATED,
+            steps=input.steps,
+            learning_rate=input.learning_rate,
+            created_at=now,
         )
 
-    return success(
-        data=CreateLoraOutput(lora=lora),
-        reasoning=f"Created LoRA project '{input.name}' with trigger word '{input.trigger_word}'. "
-        f"Next: upload 10-100 training images with lora.upload-images.",
-        warnings=warnings if warnings else None,
-        suggestions=["Upload training images: lora.upload-images"],
-    )
+        # Convert to Convex format and create
+        convex_data = _lora_to_convex(lora)
+        lora_id = await convex.create_lora(convex_data)
+        lora.id = lora_id
+
+        warnings = []
+        if input.base_model == BaseModelType.FLUX:
+            warnings.append(
+                Warning(
+                    code="FLUX_NON_COMMERCIAL",
+                    message="FLUX base model is non-commercial. Resulting LoRA inherits this license.",
+                )
+            )
+
+        return success(
+            data=CreateLoraOutput(lora=lora),
+            reasoning=f"Created LoRA project '{input.name}' with trigger word '{input.trigger_word}'. "
+            f"Next: upload 10-100 training images with lora.upload-images.",
+            warnings=warnings if warnings else None,
+            suggestions=["Upload training images: lora.upload-images"],
+        )
+
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to create LoRA: {e}",
+            suggestion="Please try again",
+        )
 
 
 async def upload_images(input: UploadImagesInput) -> CommandResult[UploadImagesOutput]:
     """Upload training images to a LoRA project.
-    
+
     Images should be high-quality examples of the style you want to capture.
     Recommended: 20-30 diverse images showing variations of the concept.
+
+    Note: Phase 1 implementation - actual image storage will be implemented in Phase 2.
     """
-    # Find the LoRA
-    lora = _loras.get(input.lora_id)
-    if not lora:
-        return error(
-            code=ErrorCode.LORA_NOT_FOUND,
-            message=f"LoRA '{input.lora_id}' not found",
-            suggestion="Use lora.list to see available LoRAs",
-        )
+    try:
+        convex = get_convex_client()
 
-    # Check status - can only upload in CREATED or READY_TO_TRAIN state
-    if lora.status not in [LoraStatus.CREATED, LoraStatus.READY_TO_TRAIN]:
-        return error(
-            code=ErrorCode.TRAINING_IN_PROGRESS,
-            message=f"Cannot upload images while LoRA is in '{lora.status.value}' state",
-            suggestion="Wait for training to complete or create a new LoRA",
-        )
-
-    # Check image count limits
-    current_count = len(lora.images)
-    new_count = len(input.images)
-    total_count = current_count + new_count
-
-    if total_count > lora.max_images:
-        return error(
-            code=ErrorCode.TOO_MANY_IMAGES,
-            message=f"Would exceed maximum of {lora.max_images} images "
-            f"(current: {current_count}, uploading: {new_count})",
-            suggestion=f"Remove {total_count - lora.max_images} images from the upload",
-        )
-
-    # Process images
-    now = _now()
-    new_images = []
-
-    for img in input.images:
-        if "url" not in img:
+        # Find the LoRA
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
             return error(
-                code=ErrorCode.INVALID_TRAINING_DATA,
-                message="Each image must have a 'url' field",
-                suggestion="Provide images as [{url: '...', caption: '...'}]",
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
             )
 
-        training_image = TrainingImage(
-            filename=img.get("filename", f"image_{len(new_images)}.jpg"),
-            url=img["url"],
-            caption=img.get("caption"),
-            uploaded_at=now,
-        )
-        new_images.append(training_image)
+        lora = _convex_to_lora(convex_lora)
 
-    # Update LoRA
-    lora.images.extend(new_images)
-    lora.status = LoraStatus.UPLOADING if total_count < lora.min_images else LoraStatus.READY_TO_TRAIN
-
-    warnings = []
-    suggestions = []
-
-    if total_count < lora.min_images:
-        warnings.append(
-            Warning(
-                code="INSUFFICIENT_IMAGES",
-                message=f"Need at least {lora.min_images} images, have {total_count}",
+        # Check status - can only upload in CREATED or READY_TO_TRAIN state
+        if lora.status not in [LoraStatus.CREATED, LoraStatus.READY_TO_TRAIN]:
+            return error(
+                code=ErrorCode.TRAINING_IN_PROGRESS,
+                message=f"Cannot upload images while LoRA is in '{lora.status.value}' state",
+                suggestion="Wait for training to complete or create a new LoRA",
             )
-        )
-        suggestions.append(f"Upload {lora.min_images - total_count} more images")
-    elif total_count < 20:
-        warnings.append(
-            Warning(
-                code="LOW_IMAGE_COUNT",
-                message="20-30 images recommended for best results",
-            )
-        )
-        suggestions.append("Consider uploading more diverse examples")
-    else:
-        suggestions.append("Ready to train: use lora.train to start")
 
-    return success(
-        data=UploadImagesOutput(lora=lora, uploaded_count=new_count),
-        reasoning=f"Uploaded {new_count} images. Total: {total_count}/{lora.max_images}. "
-        f"Status: {lora.status.value}",
-        warnings=warnings if warnings else None,
-        suggestions=suggestions if suggestions else None,
-    )
+        # For Phase 1, simulate image processing without actual storage
+        new_count = len(input.images)
+
+        # Validate images have required fields
+        for img in input.images:
+            if "url" not in img:
+                return error(
+                    code=ErrorCode.INVALID_TRAINING_DATA,
+                    message="Each image must have a 'url' field",
+                    suggestion="Provide images as [{url: '...', caption: '...'}]",
+                )
+
+        # Update LoRA status based on image count
+        # For Phase 1, we'll use a simple rule: 5+ images = ready to train
+        min_images = 5
+        max_images = 100
+
+        if new_count > max_images:
+            return error(
+                code=ErrorCode.TOO_MANY_IMAGES,
+                message=f"Cannot upload {new_count} images (maximum: {max_images})",
+                suggestion=f"Reduce to {max_images} images or fewer",
+            )
+
+        new_status = LoraStatus.READY_TO_TRAIN if new_count >= min_images else LoraStatus.UPLOADING
+
+        # Update LoRA in Convex
+        await convex.update_lora(input.lora_id, {"status": new_status.value})
+
+        # Update local LoRA object
+        lora.status = new_status
+        # Note: In Phase 2, we'll load actual images from trainingImages table
+        lora.images = [
+            TrainingImage(
+                filename=img.get("filename", f"image_{i}.jpg"),
+                url=img["url"],
+                caption=img.get("caption"),
+                uploaded_at=_now(),
+            )
+            for i, img in enumerate(input.images)
+        ]
+
+        warnings = []
+        suggestions = []
+
+        if new_count < min_images:
+            warnings.append(
+                Warning(
+                    code="INSUFFICIENT_IMAGES",
+                    message=f"Need at least {min_images} images, have {new_count}",
+                )
+            )
+            suggestions.append(f"Upload {min_images - new_count} more images")
+        elif new_count < 20:
+            warnings.append(
+                Warning(
+                    code="LOW_IMAGE_COUNT",
+                    message="20-30 images recommended for best results",
+                )
+            )
+            suggestions.append("Consider uploading more diverse examples")
+        else:
+            suggestions.append("Ready to train: use lora.train to start")
+
+        return success(
+            data=UploadImagesOutput(lora=lora, uploaded_count=new_count),
+            reasoning=f"Uploaded {new_count} images. Status: {lora.status.value}. "
+            f"Note: Phase 1 - actual storage will be implemented in Phase 2.",
+            warnings=warnings if warnings else None,
+            suggestions=suggestions if suggestions else None,
+        )
+
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to upload images: {e}",
+            suggestion="Please try again",
+        )
 
 
 async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
     """Start training on a LoRA project.
-    
+
     Training typically takes 15-60 minutes depending on steps and base model.
     Use lora.status to monitor progress.
+
+    Note: Phase 1 implementation - actual training will be implemented in Phase 3.
     """
-    # Find the LoRA
-    lora = _loras.get(input.lora_id)
-    if not lora:
-        return error(
-            code=ErrorCode.LORA_NOT_FOUND,
-            message=f"LoRA '{input.lora_id}' not found",
-            suggestion="Use lora.list to see available LoRAs",
+    try:
+        convex = get_convex_client()
+
+        # Find the LoRA
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
+            return error(
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
+            )
+
+        lora = _convex_to_lora(convex_lora)
+
+        # Check status
+        if lora.status == LoraStatus.TRAINING:
+            return error(
+                code=ErrorCode.TRAINING_IN_PROGRESS,
+                message="Training is already in progress",
+                suggestion="Use lora.status to check progress",
+            )
+
+        if lora.status == LoraStatus.COMPLETED:
+            return error(
+                code=ErrorCode.TRAINING_IN_PROGRESS,
+                message="Training has already completed",
+                suggestion="Use lora.activate to enable this LoRA for generation",
+            )
+
+        if lora.status not in [LoraStatus.CREATED, LoraStatus.UPLOADING, LoraStatus.READY_TO_TRAIN, LoraStatus.FAILED]:
+            return error(
+                code=ErrorCode.TRAINING_NOT_STARTED,
+                message=f"Cannot start training from '{lora.status.value}' state",
+                suggestion="LoRA must be in 'ready_to_train' state",
+            )
+
+        # For Phase 1, check minimum images (simulated)
+        min_images = 5
+        image_count = len(lora.images)  # This is simulated in Phase 1
+
+        if image_count < min_images:
+            return error(
+                code=ErrorCode.INSUFFICIENT_IMAGES,
+                message=f"Need at least {min_images} images, have {image_count}",
+                suggestion=f"Upload {min_images - image_count} more images first",
+            )
+
+        # Update LoRA to training state
+        now = _now()
+        updates = {
+            "status": LoraStatus.TRAINING.value,
+            "trainStartedAt": _datetime_to_timestamp(now),
+            "progress": 0,
+            "currentStep": 0,
+            "errorMessage": None,
+        }
+
+        await convex.update_lora(input.lora_id, updates)
+
+        # Update local LoRA object
+        lora.status = LoraStatus.TRAINING
+        lora.training_started_at = now
+        lora.progress = 0
+        lora.current_step = 0
+        lora.error_message = None
+
+        # Create SSE handoff for real-time progress
+        # In Phase 3: start Replicate training job and return handoff
+        handoff = create_handoff(
+            protocol="sse",
+            endpoint=f"/api/training/{lora.id}/events",
+            capabilities=["progress", "logs", "completion"],
+            reconnect_allowed=True,
+            reconnect_max_attempts=5,
+            reconnect_backoff_ms=1000,
+            description=f"Training progress for '{lora.name}'",
         )
 
-    # Check status
-    if lora.status == LoraStatus.TRAINING:
-        return error(
-            code=ErrorCode.TRAINING_IN_PROGRESS,
-            message="Training is already in progress",
-            suggestion="Use lora.status to check progress",
+        return success(
+            data=handoff,
+            reasoning=f"Training started for '{lora.name}'. Connect to SSE endpoint for real-time progress. "
+            f"Note: Phase 1 - actual training will be implemented in Phase 3.",
+            suggestions=[
+                f"Connect to SSE: /api/training/{lora.id}/events",
+                "Check status: lora.status",
+            ],
         )
 
-    if lora.status == LoraStatus.COMPLETED:
+    except ConvexError as e:
         return error(
-            code=ErrorCode.TRAINING_IN_PROGRESS,
-            message="Training has already completed",
-            suggestion="Use lora.activate to enable this LoRA for generation",
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to start training: {e}",
+            suggestion="Please try again",
         )
-
-    if lora.status not in [LoraStatus.CREATED, LoraStatus.UPLOADING, LoraStatus.READY_TO_TRAIN, LoraStatus.FAILED]:
-        return error(
-            code=ErrorCode.TRAINING_NOT_STARTED,
-            message=f"Cannot start training from '{lora.status.value}' state",
-            suggestion="LoRA must be in 'ready_to_train' state",
-        )
-
-    # Check minimum images
-    if len(lora.images) < lora.min_images:
-        return error(
-            code=ErrorCode.INSUFFICIENT_IMAGES,
-            message=f"Need at least {lora.min_images} images, have {len(lora.images)}",
-            suggestion=f"Upload {lora.min_images - len(lora.images)} more images first",
-        )
-
-    # Start training and return SSE handoff for progress streaming
-    now = _now()
-    lora.status = LoraStatus.TRAINING
-    lora.training_started_at = now
-    lora.progress = 0
-    lora.current_step = 0
-    lora.error_message = None
-
-    # Create SSE handoff for real-time progress
-    # In production: start Replicate training job and return handoff
-    handoff = create_handoff(
-        protocol="sse",
-        endpoint=f"/api/training/{lora.id}/events",
-        capabilities=["progress", "logs", "completion"],
-        reconnect_allowed=True,
-        reconnect_max_attempts=5,
-        reconnect_backoff_ms=1000,
-        description=f"Training progress for '{lora.name}'",
-    )
-
-    return success(
-        data=handoff,
-        reasoning=f"Training started for '{lora.name}'. Connect to SSE endpoint for real-time progress.",
-        suggestions=[
-            f"Connect to SSE: /api/training/{lora.id}/events",
-            "Check status: lora.status",
-        ],
-    )
 
 
 async def status(input: LoraStatusInput) -> CommandResult[LoraStatusOutput]:
     """Get the status of a LoRA project.
-    
+
     Returns full details including training progress, images, and settings.
     """
-    lora = _loras.get(input.lora_id)
-    if not lora:
-        return error(
-            code=ErrorCode.LORA_NOT_FOUND,
-            message=f"LoRA '{input.lora_id}' not found",
-            suggestion="Use lora.list to see available LoRAs",
+    try:
+        convex = get_convex_client()
+
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
+            return error(
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
+            )
+
+        lora = _convex_to_lora(convex_lora)
+
+        suggestions = []
+        if lora.status == LoraStatus.CREATED:
+            suggestions.append("Upload training images: lora.upload-images")
+        elif lora.status == LoraStatus.READY_TO_TRAIN:
+            suggestions.append("Start training: lora.train")
+        elif lora.status == LoraStatus.TRAINING:
+            suggestions.append("Training in progress. Check back for updates.")
+        elif lora.status in [LoraStatus.COMPLETED, LoraStatus.DEPLOYED] and not lora.is_active:
+            suggestions.append("Activate for generation: lora.activate")
+        elif lora.status == LoraStatus.FAILED:
+            suggestions.append("Retry training: lora.train")
+        elif lora.status == LoraStatus.DEPLOYMENT_FAILED:
+            suggestions.append("Retry deployment: lora.deploy")
+
+        return success(
+            data=LoraStatusOutput(lora=lora),
+            reasoning=f"LoRA '{lora.name}' is {lora.status.value}. "
+            f"{len(lora.images)} training images. "
+            f"{'Active' if lora.is_active else 'Not active'} for generation.",
+            suggestions=suggestions if suggestions else None,
         )
 
-    suggestions = []
-    if lora.status == LoraStatus.CREATED:
-        suggestions.append("Upload training images: lora.upload-images")
-    elif lora.status == LoraStatus.READY_TO_TRAIN:
-        suggestions.append("Start training: lora.train")
-    elif lora.status == LoraStatus.TRAINING:
-        suggestions.append("Training in progress. Check back for updates.")
-    elif lora.status == LoraStatus.COMPLETED and not lora.is_active:
-        suggestions.append("Activate for generation: lora.activate")
-    elif lora.status == LoraStatus.FAILED:
-        suggestions.append("Retry training: lora.train")
-
-    return success(
-        data=LoraStatusOutput(lora=lora),
-        reasoning=f"LoRA '{lora.name}' is {lora.status.value}. "
-        f"{len(lora.images)} training images. "
-        f"{'Active' if lora.is_active else 'Not active'} for generation.",
-        suggestions=suggestions if suggestions else None,
-    )
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to get LoRA status: {e}",
+            suggestion="Please try again",
+        )
 
 
 async def list_loras(input: LoraListInput) -> CommandResult[LoraListOutput]:
     """List all LoRA projects.
-    
+
     Optional filters: status, base_model, active_only.
     """
-    loras = list(_loras.values())
+    try:
+        convex = get_convex_client()
 
-    # Apply filters
-    if input.status:
-        loras = [l for l in loras if l.status == input.status]
-    if input.base_model:
-        loras = [l for l in loras if l.base_model == input.base_model]
-    if input.active_only:
-        loras = [l for l in loras if l.is_active]
-
-    # Convert to LoraInfo summaries
-    lora_infos = [
-        LoraInfo(
-            id=l.id,
-            name=l.name,
-            trigger_word=l.trigger_word,
-            base_model=l.base_model,
-            status=l.status,
-            image_count=len(l.images),
-            is_active=l.is_active,
-            created_at=l.created_at,
+        # Get LoRAs with filters
+        convex_loras = await convex.list_loras(
+            status=input.status.value if input.status else None,
+            base_model=input.base_model.value if input.base_model else None,
+            active_only=input.active_only
         )
-        for l in loras
-    ]
 
-    # Sort by creation date (newest first)
-    lora_infos.sort(key=lambda x: x.created_at, reverse=True)
+        # Convert to LoraInfo summaries
+        lora_infos = []
+        for convex_lora in convex_loras:
+            lora_info = LoraInfo(
+                id=convex_lora["_id"],
+                name=convex_lora["name"],
+                trigger_word=convex_lora["triggerWord"],
+                base_model=BaseModelType(convex_lora["baseModel"]),
+                status=LoraStatus(convex_lora["status"]),
+                image_count=0,  # TODO: Count from trainingImages table in Phase 2
+                is_active=convex_lora["isActive"],
+                created_at=_timestamp_to_datetime(convex_lora["createdAt"]),
+            )
+            lora_infos.append(lora_info)
 
-    filters_applied = []
-    if input.status:
-        filters_applied.append(f"status={input.status.value}")
-    if input.base_model:
-        filters_applied.append(f"base_model={input.base_model.value}")
-    if input.active_only:
-        filters_applied.append("active_only=true")
+        # Sort by creation date (newest first)
+        lora_infos.sort(key=lambda x: x.created_at, reverse=True)
 
-    filter_str = f" (filters: {', '.join(filters_applied)})" if filters_applied else ""
+        filters_applied = []
+        if input.status:
+            filters_applied.append(f"status={input.status.value}")
+        if input.base_model:
+            filters_applied.append(f"base_model={input.base_model.value}")
+        if input.active_only:
+            filters_applied.append("active_only=true")
 
-    return success(
-        data=LoraListOutput(loras=lora_infos, total=len(lora_infos)),
-        reasoning=f"Found {len(lora_infos)} LoRAs{filter_str}",
-    )
+        filter_str = f" (filters: {', '.join(filters_applied)})" if filters_applied else ""
+
+        return success(
+            data=LoraListOutput(loras=lora_infos, total=len(lora_infos)),
+            reasoning=f"Found {len(lora_infos)} LoRAs{filter_str}",
+        )
+
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to list LoRAs: {e}",
+            suggestion="Please try again",
+        )
 
 
 async def activate(input: LoraActivateInput) -> CommandResult[LoraActivateOutput]:
     """Activate or deactivate a trained LoRA.
-    
+
     Active LoRAs are available for use in asset.generate with the trigger word.
     """
-    lora = _loras.get(input.lora_id)
-    if not lora:
+    try:
+        convex = get_convex_client()
+
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
+            return error(
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
+            )
+
+        lora = _convex_to_lora(convex_lora)
+
+        # Can only activate completed/deployed LoRAs
+        if input.active and lora.status not in [LoraStatus.COMPLETED, LoraStatus.DEPLOYED]:
+            return error(
+                code=ErrorCode.LORA_NOT_READY,
+                message=f"Cannot activate LoRA in '{lora.status.value}' state",
+                suggestion="Wait for training to complete (status: completed or deployed)",
+            )
+
+        previous_state = "active" if lora.is_active else "inactive"
+        new_state = "active" if input.active else "inactive"
+
+        # Update LoRA in Convex
+        await convex.update_lora(input.lora_id, {"isActive": input.active})
+
+        # Update local LoRA object
+        lora.is_active = input.active
+
+        suggestions = []
+        if input.active:
+            suggestions.append(
+                f"Generate with: asset.generate --prompt '{lora.trigger_word} your description'"
+            )
+
+        return success(
+            data=LoraActivateOutput(lora=lora),
+            reasoning=f"LoRA '{lora.name}' changed from {previous_state} to {new_state}. "
+            + (f"Use trigger word '{lora.trigger_word}' in prompts." if input.active else ""),
+            suggestions=suggestions if suggestions else None,
+        )
+
+    except ConvexError as e:
         return error(
-            code=ErrorCode.LORA_NOT_FOUND,
-            message=f"LoRA '{input.lora_id}' not found",
-            suggestion="Use lora.list to see available LoRAs",
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to update LoRA: {e}",
+            suggestion="Please try again",
         )
-
-    # Can only activate completed LoRAs
-    if input.active and lora.status != LoraStatus.COMPLETED:
-        return error(
-            code=ErrorCode.LORA_NOT_READY,
-            message=f"Cannot activate LoRA in '{lora.status.value}' state",
-            suggestion="Wait for training to complete (status: completed)",
-        )
-
-    previous_state = "active" if lora.is_active else "inactive"
-    lora.is_active = input.active
-    new_state = "active" if lora.is_active else "inactive"
-
-    suggestions = []
-    if input.active:
-        suggestions.append(
-            f"Generate with: asset.generate --prompt '{lora.trigger_word} your description'"
-        )
-
-    return success(
-        data=LoraActivateOutput(lora=lora),
-        reasoning=f"LoRA '{lora.name}' changed from {previous_state} to {new_state}. "
-        + (f"Use trigger word '{lora.trigger_word}' in prompts." if input.active else ""),
-        suggestions=suggestions if suggestions else None,
-    )
 
 
 async def delete(input: LoraDeleteInput) -> CommandResult[LoraDeleteOutput]:
     """Delete a LoRA project.
-    
+
     This permanently removes the LoRA and all associated training data.
     Use force=true to delete even if training is in progress.
     """
-    lora = _loras.get(input.lora_id)
-    if not lora:
-        return error(
-            code=ErrorCode.LORA_NOT_FOUND,
-            message=f"LoRA '{input.lora_id}' not found",
-            suggestion="Use lora.list to see available LoRAs",
+    try:
+        convex = get_convex_client()
+
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
+            return error(
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
+            )
+
+        lora = _convex_to_lora(convex_lora)
+
+        # Check if active
+        if lora.is_active:
+            return error(
+                code=ErrorCode.CANNOT_DELETE_ACTIVE,
+                message="Cannot delete an active LoRA",
+                suggestion="Deactivate first: lora.activate --lora_id ... --active false",
+            )
+
+        # Check if training in progress
+        if lora.status == LoraStatus.TRAINING and not input.force:
+            return error(
+                code=ErrorCode.TRAINING_IN_PROGRESS,
+                message="Cannot delete while training is in progress",
+                suggestion="Wait for training to complete or use force=true to cancel and delete",
+            )
+
+        # Delete the LoRA from Convex
+        name = lora.name
+        await convex.delete_lora(input.lora_id)
+
+        return success(
+            data=LoraDeleteOutput(deleted_id=input.lora_id, name=name),
+            reasoning=f"Deleted LoRA '{name}' and all associated training data.",
         )
 
-    # Check if active
-    if lora.is_active:
+    except ConvexError as e:
         return error(
-            code=ErrorCode.CANNOT_DELETE_ACTIVE,
-            message="Cannot delete an active LoRA",
-            suggestion="Deactivate first: lora.activate --lora_id ... --active false",
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to delete LoRA: {e}",
+            suggestion="Please try again",
         )
-
-    # Check if training in progress
-    if lora.status == LoraStatus.TRAINING and not input.force:
-        return error(
-            code=ErrorCode.TRAINING_IN_PROGRESS,
-            message="Cannot delete while training is in progress",
-            suggestion="Wait for training to complete or use force=true to cancel and delete",
-        )
-
-    # Delete the LoRA
-    name = lora.name
-    del _loras[input.lora_id]
-
-    return success(
-        data=LoraDeleteOutput(deleted_id=input.lora_id, name=name),
-        reasoning=f"Deleted LoRA '{name}' and all associated training data.",
-    )
 
 
 # =============================================================================
@@ -594,7 +758,11 @@ async def delete(input: LoraDeleteInput) -> CommandResult[LoraDeleteOutput]:
 # =============================================================================
 
 
-def reset_storage():
-    """Reset in-memory storage. Used for testing."""
-    global _loras
-    _loras = {}
+async def reset_storage():
+    """Reset Convex storage. Used for testing.
+
+    Note: This is a placeholder for Phase 1. In future phases, this would
+    clear the Convex database for testing purposes.
+    """
+    # TODO: Implement Convex database clearing for testing
+    pass
