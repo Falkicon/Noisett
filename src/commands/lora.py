@@ -60,8 +60,33 @@ def _timestamp_to_datetime(ts: int) -> datetime:
     return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
 
 
-def _convex_to_lora(convex_data: dict) -> Lora:
-    """Convert Convex LoRA data to Lora object."""
+async def _convex_to_lora(convex_data: dict, convex_client=None) -> Lora:
+    """Convert Convex LoRA data to Lora object.
+
+    Args:
+        convex_data: LoRA data from Convex
+        convex_client: Optional Convex client for loading training images
+    """
+    images = []
+
+    # Load training images if client is provided
+    if convex_client:
+        try:
+            training_images = await convex_client.list_training_images_by_lora(convex_data["_id"])
+            images = [
+                TrainingImage(
+                    filename=img["filename"],
+                    url=f"convex-storage://{img['storageId']}",  # Use storage ID as URL
+                    caption=img.get("caption"),
+                    uploaded_at=_timestamp_to_datetime(img["uploadedAt"]),
+                )
+                for img in training_images
+            ]
+        except Exception:
+            # If loading images fails, continue without them
+            # This maintains backwards compatibility
+            pass
+
     return Lora(
         id=convex_data["_id"],
         name=convex_data["name"],
@@ -78,7 +103,7 @@ def _convex_to_lora(convex_data: dict) -> Lora:
         progress=convex_data.get("progress", 0),  # Default to 0 if None
         current_step=convex_data.get("currentStep", 0),  # Default to 0 if None
         error_message=convex_data.get("errorMessage"),
-        images=[],  # TODO: Load from trainingImages table in Phase 2
+        images=images,
     )
 
 
@@ -162,7 +187,7 @@ class UploadImagesInput(BaseModel):
     images: list[dict] = Field(
         ...,
         min_length=1,
-        description="List of images with 'url' and optional 'caption' keys",
+        description="List of images with either 'url' (Phase 1) or 'storage_id' (Phase 2) and optional metadata",
     )
 
 
@@ -330,10 +355,13 @@ async def create(input: CreateLoraInput) -> CommandResult[CreateLoraOutput]:
 async def upload_images(input: UploadImagesInput) -> CommandResult[UploadImagesOutput]:
     """Upload training images to a LoRA project.
 
+    Phase 2: Now supports real Convex file storage with validation.
     Images should be high-quality examples of the style you want to capture.
     Recommended: 20-30 diverse images showing variations of the concept.
 
-    Note: Phase 1 implementation - actual image storage will be implemented in Phase 2.
+    Supports two input formats:
+    - Phase 1 (URLs): [{"url": "...", "caption": "..."}]
+    - Phase 2 (Storage IDs): [{"storage_id": "...", "filename": "...", "width": 512, "height": 512, "size_bytes": 1024000}]
     """
     try:
         convex = get_convex_client()
@@ -347,85 +375,149 @@ async def upload_images(input: UploadImagesInput) -> CommandResult[UploadImagesO
                 suggestion="Use lora.list to see available LoRAs",
             )
 
-        lora = _convex_to_lora(convex_lora)
+        lora = await _convex_to_lora(convex_lora, convex)
 
-        # Check status - can only upload in CREATED or READY_TO_TRAIN state
-        if lora.status not in [LoraStatus.CREATED, LoraStatus.READY_TO_TRAIN]:
+        # Check status - can only upload in CREATED, UPLOADING, or READY_TO_TRAIN state
+        valid_statuses = [LoraStatus.CREATED, LoraStatus.UPLOADING, LoraStatus.READY_TO_TRAIN]
+        if lora.status not in valid_statuses:
             return error(
                 code=ErrorCode.TRAINING_IN_PROGRESS,
                 message=f"Cannot upload images while LoRA is in '{lora.status.value}' state",
                 suggestion="Wait for training to complete or create a new LoRA",
             )
 
-        # For Phase 1, simulate image processing without actual storage
-        new_count = len(input.images)
+        # Determine input format and validate
+        is_phase2 = any("storage_id" in img for img in input.images)
+        is_phase1 = any("url" in img for img in input.images)
 
-        # Validate images have required fields
-        for img in input.images:
-            if "url" not in img:
-                return error(
-                    code=ErrorCode.INVALID_TRAINING_DATA,
-                    message="Each image must have a 'url' field",
-                    suggestion="Provide images as [{url: '...', caption: '...'}]",
-                )
-
-        # Update LoRA status based on image count
-        # For Phase 1, we'll use a simple rule: 5+ images = ready to train
-        min_images = 5
-        max_images = 100
-
-        if new_count > max_images:
+        if is_phase1 and is_phase2:
             return error(
-                code=ErrorCode.TOO_MANY_IMAGES,
-                message=f"Cannot upload {new_count} images (maximum: {max_images})",
-                suggestion=f"Reduce to {max_images} images or fewer",
+                code=ErrorCode.INVALID_TRAINING_DATA,
+                message="Mixed input formats not supported - use either URLs or storage IDs",
+                suggestion="Provide either Phase 1 format [{url: '...'}] or Phase 2 format [{storage_id: '...', filename: '...'}]",
             )
 
-        new_status = LoraStatus.READY_TO_TRAIN if new_count >= min_images else LoraStatus.UPLOADING
+        # Validate collection size first
+        from src.core.image_validation import validate_image_collection, CollectionValidationError
+
+        try:
+            collection_warnings = validate_image_collection(len(input.images))
+        except CollectionValidationError as e:
+            return error(
+                code=ErrorCode.TOO_MANY_IMAGES if "too many" in e.message.lower() else ErrorCode.INVALID_TRAINING_DATA,
+                message=e.message,
+                suggestion="Adjust the number of training images",
+            )
+
+        if is_phase2:
+            # Phase 2: Handle storage IDs with validation and Convex storage
+            training_images = []
+            all_warnings = collection_warnings.copy()
+
+            for img in input.images:
+                # Validate required fields
+                if "storage_id" not in img or "filename" not in img:
+                    return error(
+                        code=ErrorCode.INVALID_TRAINING_DATA,
+                        message="Phase 2 format requires 'storage_id' and 'filename' fields",
+                        suggestion="Provide: {storage_id: '...', filename: '...', width: 512, height: 512, size_bytes: 1024000}",
+                    )
+
+                # Validate dimensions if provided
+                width = img.get("width")
+                height = img.get("height")
+                if width and height:
+                    if width < 512 or height < 512:
+                        return error(
+                            code=ErrorCode.INVALID_TRAINING_DATA,
+                            message=f"Image '{img['filename']}' dimensions {width}x{height} are too small (minimum 512x512)",
+                            suggestion="Use images with at least 512x512 resolution",
+                        )
+
+                # Create training image record in Convex
+                image_data = {
+                    "loraId": input.lora_id,
+                    "storageId": img["storage_id"],
+                    "filename": img["filename"],
+                    "caption": img.get("caption"),
+                    "sizeBytes": img.get("size_bytes", 0),
+                    "width": img.get("width"),
+                    "height": img.get("height"),
+                    "uploadedAt": int(_now().timestamp() * 1000),
+                }
+
+                training_image_id = await convex.create_training_image(image_data)
+
+                # Create TrainingImage object for response
+                training_images.append(
+                    TrainingImage(
+                        filename=img["filename"],
+                        url=f"convex-storage://{img['storage_id']}",  # Use storage ID as URL
+                        caption=img.get("caption"),
+                        uploaded_at=_now(),
+                    )
+                )
+
+            # Get updated image count
+            total_images = await convex.count_training_images_by_lora(input.lora_id)
+
+        else:
+            # Phase 1: Handle URLs (backwards compatibility)
+            for img in input.images:
+                if "url" not in img:
+                    return error(
+                        code=ErrorCode.INVALID_TRAINING_DATA,
+                        message="Phase 1 format requires 'url' field",
+                        suggestion="Provide images as [{url: '...', caption: '...'}]",
+                    )
+
+            # For Phase 1, simulate without actual storage
+            total_images = len(input.images)
+            all_warnings = collection_warnings.copy()
+            training_images = [
+                TrainingImage(
+                    filename=img.get("filename", f"image_{i}.jpg"),
+                    url=img["url"],
+                    caption=img.get("caption"),
+                    uploaded_at=_now(),
+                )
+                for i, img in enumerate(input.images)
+            ]
+
+        # Update LoRA status based on image count
+        min_images = 5
+        new_status = LoraStatus.READY_TO_TRAIN if total_images >= min_images else LoraStatus.UPLOADING
 
         # Update LoRA in Convex
         await convex.update_lora(input.lora_id, {"status": new_status.value})
 
         # Update local LoRA object
         lora.status = new_status
-        # Note: In Phase 2, we'll load actual images from trainingImages table
-        lora.images = [
-            TrainingImage(
-                filename=img.get("filename", f"image_{i}.jpg"),
-                url=img["url"],
-                caption=img.get("caption"),
-                uploaded_at=_now(),
-            )
-            for i, img in enumerate(input.images)
-        ]
+        lora.images = training_images
 
-        warnings = []
+        # Convert warnings to Warning objects
+        warning_objects = []
         suggestions = []
 
-        if new_count < min_images:
-            warnings.append(
+        for w in all_warnings:
+            warning_objects.append(Warning(code="IMAGE_VALIDATION_WARNING", message=w))
+
+        if total_images < min_images:
+            warning_objects.append(
                 Warning(
                     code="INSUFFICIENT_IMAGES",
-                    message=f"Need at least {min_images} images, have {new_count}",
+                    message=f"Need at least {min_images} images, have {total_images}",
                 )
             )
-            suggestions.append(f"Upload {min_images - new_count} more images")
-        elif new_count < 20:
-            warnings.append(
-                Warning(
-                    code="LOW_IMAGE_COUNT",
-                    message="20-30 images recommended for best results",
-                )
-            )
-            suggestions.append("Consider uploading more diverse examples")
-        else:
+            suggestions.append(f"Upload {min_images - total_images} more images")
+        elif total_images >= min_images:
             suggestions.append("Ready to train: use lora.train to start")
 
         return success(
-            data=UploadImagesOutput(lora=lora, uploaded_count=new_count),
-            reasoning=f"Uploaded {new_count} images. Status: {lora.status.value}. "
-            f"Note: Phase 1 - actual storage will be implemented in Phase 2.",
-            warnings=warnings if warnings else None,
+            data=UploadImagesOutput(lora=lora, uploaded_count=len(input.images)),
+            reasoning=f"{'Stored' if is_phase2 else 'Uploaded'} {len(input.images)} images. "
+            f"Total: {total_images}. Status: {lora.status.value}.",
+            warnings=warning_objects if warning_objects else None,
             suggestions=suggestions if suggestions else None,
         )
 
@@ -457,7 +549,7 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
                 suggestion="Use lora.list to see available LoRAs",
             )
 
-        lora = _convex_to_lora(convex_lora)
+        lora = await _convex_to_lora(convex_lora, convex)
 
         # Check status
         if lora.status == LoraStatus.TRAINING:
@@ -557,7 +649,7 @@ async def status(input: LoraStatusInput) -> CommandResult[LoraStatusOutput]:
                 suggestion="Use lora.list to see available LoRAs",
             )
 
-        lora = _convex_to_lora(convex_lora)
+        lora = await _convex_to_lora(convex_lora, convex)
 
         suggestions = []
         if lora.status == LoraStatus.CREATED:
@@ -607,13 +699,16 @@ async def list_loras(input: LoraListInput) -> CommandResult[LoraListOutput]:
         # Convert to LoraInfo summaries
         lora_infos = []
         for convex_lora in convex_loras:
+            # Get image count for Phase 2
+            image_count = await convex.count_training_images_by_lora(convex_lora["_id"])
+
             lora_info = LoraInfo(
                 id=convex_lora["_id"],
                 name=convex_lora["name"],
                 trigger_word=convex_lora["triggerWord"],
                 base_model=BaseModelType(convex_lora["baseModel"]),
                 status=LoraStatus(convex_lora["status"]),
-                image_count=0,  # TODO: Count from trainingImages table in Phase 2
+                image_count=image_count,
                 is_active=convex_lora["isActive"],
                 created_at=_timestamp_to_datetime(convex_lora["createdAt"]),
             )
@@ -661,7 +756,7 @@ async def activate(input: LoraActivateInput) -> CommandResult[LoraActivateOutput
                 suggestion="Use lora.list to see available LoRAs",
             )
 
-        lora = _convex_to_lora(convex_lora)
+        lora = await _convex_to_lora(convex_lora, convex)
 
         # Can only activate completed/deployed LoRAs
         if input.active and lora.status not in [LoraStatus.COMPLETED, LoraStatus.DEPLOYED]:
@@ -718,7 +813,7 @@ async def delete(input: LoraDeleteInput) -> CommandResult[LoraDeleteOutput]:
                 suggestion="Use lora.list to see available LoRAs",
             )
 
-        lora = _convex_to_lora(convex_lora)
+        lora = await _convex_to_lora(convex_lora, convex)
 
         # Check if active
         if lora.is_active:
@@ -736,8 +831,11 @@ async def delete(input: LoraDeleteInput) -> CommandResult[LoraDeleteOutput]:
                 suggestion="Wait for training to complete or use force=true to cancel and delete",
             )
 
-        # Delete the LoRA from Convex
+        # Delete training images first
         name = lora.name
+        await convex.delete_training_images_by_lora(input.lora_id)
+
+        # Delete the LoRA from Convex
         await convex.delete_lora(input.lora_id)
 
         return success(
