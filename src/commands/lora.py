@@ -285,6 +285,53 @@ class LoraDeleteOutput(BaseModel):
     name: str = Field(..., description="Name of the deleted LoRA")
 
 
+class EstimateLoraInput(BaseModel):
+    """Input for lora.estimate command."""
+
+    lora_id: str | None = Field(
+        default=None, description="Use existing LoRA's steps for estimation"
+    )
+    steps: int = Field(
+        default=1000,
+        ge=100,
+        le=5000,
+        description="Number of training steps to estimate for",
+    )
+
+
+class EstimateLoraOutput(BaseModel):
+    """Output for lora.estimate command."""
+
+    estimated_cost_usd: float = Field(..., description="Estimated cost in USD")
+    estimated_time_minutes: int = Field(..., description="Estimated time in minutes")
+    steps: int = Field(..., description="Number of training steps")
+
+
+class CleanupLoraInput(BaseModel):
+    """Input for lora.cleanup command."""
+
+    max_age_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,  # 1 week max
+        description="Maximum age in hours for orphaned LoRAs",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Only show what would be cleaned up without doing it",
+    )
+
+
+class CleanupLoraOutput(BaseModel):
+    """Output for lora.cleanup command."""
+
+    cleaned_count: int = Field(..., description="Number of LoRAs cleaned up")
+    freed_space_mb: float | None = Field(
+        default=None, description="Storage space freed in MB"
+    )
+    cleaned_ids: list[str] = Field(..., description="IDs of cleaned LoRAs")
+
+
 # =============================================================================
 # Command Implementations
 # =============================================================================
@@ -530,12 +577,10 @@ async def upload_images(input: UploadImagesInput) -> CommandResult[UploadImagesO
 
 
 async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
-    """Start training on a LoRA project.
+    """Start training on a LoRA project using Replicate.
 
     Training typically takes 15-60 minutes depending on steps and base model.
-    Use lora.status to monitor progress.
-
-    Note: Phase 1 implementation - actual training will be implemented in Phase 3.
+    Use lora.status to monitor progress or connect to the SSE endpoint.
     """
     try:
         convex = get_convex_client()
@@ -559,7 +604,7 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
                 suggestion="Use lora.status to check progress",
             )
 
-        if lora.status == LoraStatus.COMPLETED:
+        if lora.status in [LoraStatus.COMPLETED, LoraStatus.DEPLOYED]:
             return error(
                 code=ErrorCode.TRAINING_IN_PROGRESS,
                 message="Training has already completed",
@@ -573,9 +618,18 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
                 suggestion="LoRA must be in 'ready_to_train' state",
             )
 
-        # For Phase 1, check minimum images (simulated)
+        # Check for duplicate trigger word
+        existing_lora = await convex.get_lora_by_trigger_word(lora.trigger_word.lower())
+        if existing_lora and existing_lora["_id"] != input.lora_id and existing_lora["status"] in ["training", "completed", "deployed"]:
+            return error(
+                code=ErrorCode.LORA_ALREADY_EXISTS,
+                message=f"Another LoRA with trigger word '{lora.trigger_word}' is already trained/training",
+                suggestion="Use a different trigger word or delete the existing LoRA",
+            )
+
+        # Validate image count with Convex data
         min_images = 5
-        image_count = len(lora.images)  # This is simulated in Phase 1
+        image_count = await convex.count_training_images_by_lora(input.lora_id)
 
         if image_count < min_images:
             return error(
@@ -584,13 +638,47 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
                 suggestion=f"Upload {min_images - image_count} more images first",
             )
 
-        # Update LoRA to training state
+        # Export training images to zip
+        try:
+            from src.ml.training import export_training_images_to_zip
+            zip_url = await export_training_images_to_zip(input.lora_id)
+        except ValueError as e:
+            return error(
+                code=ErrorCode.INVALID_TRAINING_DATA,
+                message=str(e),
+                suggestion="Ensure all training images are valid",
+            )
+        except Exception as e:
+            return error(
+                code=ErrorCode.STORAGE_ERROR,
+                message=f"Failed to prepare training data: {e}",
+                suggestion="Please try again",
+            )
+
+        # Start Replicate training
+        try:
+            from src.ml.training import start_replicate_training
+            replicate_training_id = await start_replicate_training(
+                lora_id=input.lora_id,
+                zip_url=zip_url,
+                trigger_word=lora.trigger_word,
+                steps=lora.steps
+            )
+        except ValueError as e:
+            return error(
+                code=ErrorCode.TRAINING_NOT_STARTED,
+                message=str(e),
+                suggestion="Check your Replicate API configuration",
+            )
+
+        # Update LoRA to training state with Replicate ID
         now = _now()
         updates = {
             "status": LoraStatus.TRAINING.value,
             "trainStartedAt": _datetime_to_timestamp(now),
             "progress": 0,
             "currentStep": 0,
+            "replicateTrainingId": replicate_training_id,
             "errorMessage": None,
         }
 
@@ -604,7 +692,6 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
         lora.error_message = None
 
         # Create SSE handoff for real-time progress
-        # In Phase 3: start Replicate training job and return handoff
         handoff = create_handoff(
             protocol="sse",
             endpoint=f"/api/training/{lora.id}/events",
@@ -617,8 +704,8 @@ async def train(input: TrainLoraInput) -> CommandResult[TrainLoraOutput]:
 
         return success(
             data=handoff,
-            reasoning=f"Training started for '{lora.name}'. Connect to SSE endpoint for real-time progress. "
-            f"Note: Phase 1 - actual training will be implemented in Phase 3.",
+            reasoning=f"Training started for '{lora.name}' on Replicate (ID: {replicate_training_id[:8]}...). "
+            f"Connect to SSE endpoint for real-time progress.",
             suggestions=[
                 f"Connect to SSE: /api/training/{lora.id}/events",
                 "Check status: lora.status",
@@ -847,6 +934,103 @@ async def delete(input: LoraDeleteInput) -> CommandResult[LoraDeleteOutput]:
         return error(
             code=ErrorCode.STORAGE_ERROR,
             message=f"Failed to delete LoRA: {e}",
+            suggestion="Please try again",
+        )
+
+
+async def estimate(input: EstimateLoraInput) -> CommandResult[EstimateLoraOutput]:
+    """Estimate cost and time for LoRA training.
+
+    Provides cost and time estimates based on the number of training steps.
+    Use this before starting training to understand resource requirements.
+    """
+    try:
+        steps = input.steps
+
+        # If lora_id is provided, use its step count
+        if input.lora_id:
+            convex = get_convex_client()
+            convex_lora = await convex.get_lora(input.lora_id)
+            if not convex_lora:
+                return error(
+                    code=ErrorCode.LORA_NOT_FOUND,
+                    message=f"LoRA '{input.lora_id}' not found",
+                    suggestion="Use lora.list to see available LoRAs",
+                )
+            steps = convex_lora["steps"]
+
+        # Get estimate from training module
+        from src.ml.training import estimate_training_cost
+        estimate_data = await estimate_training_cost(steps)
+
+        return success(
+            data=EstimateLoraOutput(
+                estimated_cost_usd=estimate_data["estimated_cost_usd"],
+                estimated_time_minutes=estimate_data["estimated_time_minutes"],
+                steps=estimate_data["steps"],
+            ),
+            reasoning=f"Training {steps} steps will cost ~${estimate_data['estimated_cost_usd']} "
+            f"and take ~{estimate_data['estimated_time_minutes']} minutes on Replicate.",
+            suggestions=[
+                "Consider reducing steps for faster/cheaper training",
+                "Run lora.train when ready to proceed",
+            ],
+        )
+
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to get LoRA details: {e}",
+            suggestion="Please try again",
+        )
+
+
+async def cleanup(input: CleanupLoraInput) -> CommandResult[CleanupLoraOutput]:
+    """Clean up orphaned LoRA training projects.
+
+    Removes LoRAs that have been stuck in uploading state for too long,
+    and optionally cancels associated Replicate training jobs.
+    """
+    try:
+        from src.ml.training import cleanup_orphaned_trainings
+
+        if input.dry_run:
+            # For dry run, just check what would be cleaned
+            convex = get_convex_client()
+            cutoff_time = int((time.time() - input.max_age_hours * 3600) * 1000)
+
+            uploading_loras = await convex.list_loras(status="uploading")
+            old_loras = [
+                lora for lora in uploading_loras
+                if lora.get("createdAt", 0) < cutoff_time
+            ]
+
+            return success(
+                data=CleanupLoraOutput(
+                    cleaned_count=len(old_loras),
+                    cleaned_ids=[lora["_id"] for lora in old_loras],
+                ),
+                reasoning=f"Would clean up {len(old_loras)} LoRAs stuck in uploading state "
+                f"for more than {input.max_age_hours} hours. Use dry_run=false to proceed.",
+                suggestions=["Set dry_run=false to perform actual cleanup"] if old_loras else None,
+            )
+
+        # Perform actual cleanup
+        cleaned_count = await cleanup_orphaned_trainings(input.max_age_hours)
+
+        return success(
+            data=CleanupLoraOutput(
+                cleaned_count=cleaned_count,
+                cleaned_ids=[],  # IDs not tracked in current implementation
+            ),
+            reasoning=f"Cleaned up {cleaned_count} orphaned LoRA training projects "
+            f"that were stuck for more than {input.max_age_hours} hours.",
+        )
+
+    except Exception as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to cleanup orphaned LoRAs: {e}",
             suggestion="Please try again",
         )
 

@@ -12,10 +12,15 @@ Usage:
 """
 
 import asyncio
+import hashlib
+import hmac
+import json
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -346,86 +351,193 @@ async def get_generated_image(filename: str):
 from sse_starlette.sse import EventSourceResponse
 
 
-async def training_event_generator(lora_id: str):
-    """Generate SSE events for LoRA training progress.
-    
+async def training_event_generator(lora_id: str, last_event_id: int = 0):
+    """Generate SSE events for LoRA training progress reading from Convex.
+
     Yields events in format:
         event: progress
         data: {"step": 100, "total": 1000, "percent": 10, "message": "..."}
-        
+
         event: complete
         data: {"lora_id": "...", "lora_url": "..."}
-        
+
         event: error
         data: {"code": "...", "message": "..."}
     """
-    from src.commands.lora import _loras
     from src.core.types import LoraStatus
     import json
-    
-    # Get the LoRA
-    lora = _loras.get(lora_id)
-    if not lora:
+
+    convex = get_convex_client()
+    event_counter = last_event_id
+    last_status = None
+    last_progress = None
+
+    try:
+        # Get initial LoRA state
+        convex_lora = await convex.get_lora(lora_id)
+        if not convex_lora:
+            yield {
+                "id": str(event_counter + 1),
+                "event": "error",
+                "data": json.dumps({"code": "LORA_NOT_FOUND", "message": f"LoRA '{lora_id}' not found"}),
+            }
+            return
+
+        # Send initial status
+        event_counter += 1
         yield {
-            "event": "error",
-            "data": json.dumps({"code": "LORA_NOT_FOUND", "message": f"LoRA '{lora_id}' not found"}),
-        }
-        return
-    
-    # Simulate training progress (in production, poll Replicate API)
-    for step in range(0, lora.steps + 1, lora.steps // 10 or 1):
-        # Check if still training
-        if lora.status != LoraStatus.TRAINING:
-            break
-            
-        progress = int((step / lora.steps) * 100)
-        lora.current_step = step
-        lora.progress = progress
-        
-        yield {
-            "event": "progress",
+            "id": str(event_counter),
+            "event": "status",
             "data": json.dumps({
-                "step": step,
-                "total": lora.steps,
-                "percent": progress,
-                "message": f"Training step {step}/{lora.steps}",
+                "lora_id": lora_id,
+                "status": convex_lora["status"],
+                "progress": convex_lora.get("progress", 0),
+                "current_step": convex_lora.get("currentStep", 0),
+                "steps": convex_lora["steps"],
+                "message": f"Current status: {convex_lora['status']}"
             }),
         }
-        
-        # Simulate training time
-        await asyncio.sleep(0.5)
-    
-    # Mark training complete
-    from datetime import datetime, timezone
-    lora.status = LoraStatus.COMPLETED
-    lora.completed_at = datetime.now(timezone.utc)
-    lora.progress = 100
-    lora.current_step = lora.steps
-    lora.lora_url = f"https://storage.noisett.ai/loras/{lora.id}/weights.safetensors"
-    
-    yield {
-        "event": "complete",
-        "data": json.dumps({
-            "lora_id": lora.id,
-            "lora_url": lora.lora_url,
-            "trigger_word": lora.trigger_word,
-            "message": f"Training complete! Use trigger word '{lora.trigger_word}'",
-        }),
-    }
+
+        # Poll for updates
+        while True:
+            try:
+                # Get current LoRA state
+                current_lora = await convex.get_lora(lora_id)
+                if not current_lora:
+                    break
+
+                current_status = current_lora["status"]
+                current_progress = current_lora.get("progress", 0)
+                current_step = current_lora.get("currentStep", 0)
+                total_steps = current_lora["steps"]
+
+                # Check if status changed
+                if current_status != last_status:
+                    event_counter += 1
+                    if current_status == "training":
+                        yield {
+                            "id": str(event_counter),
+                            "event": "training_started",
+                            "data": json.dumps({
+                                "lora_id": lora_id,
+                                "status": current_status,
+                                "message": "Training started on Replicate",
+                            }),
+                        }
+                    elif current_status == "failed":
+                        yield {
+                            "id": str(event_counter),
+                            "event": "error",
+                            "data": json.dumps({
+                                "code": current_lora.get("errorCode", "TRAINING_FAILED"),
+                                "message": current_lora.get("errorMessage", "Training failed"),
+                            }),
+                        }
+                        break
+                    elif current_status in ["completed", "deployment_pending"]:
+                        yield {
+                            "id": str(event_counter),
+                            "event": "training_complete",
+                            "data": json.dumps({
+                                "lora_id": lora_id,
+                                "status": current_status,
+                                "lora_url": current_lora.get("loraUrl"),
+                                "message": "Training completed! Deploying to Fireworks...",
+                            }),
+                        }
+                    elif current_status == "deployed":
+                        yield {
+                            "id": str(event_counter),
+                            "event": "complete",
+                            "data": json.dumps({
+                                "lora_id": lora_id,
+                                "status": current_status,
+                                "lora_url": current_lora.get("loraUrl"),
+                                "fireworks_model_id": current_lora.get("fireworksModelId"),
+                                "trigger_word": current_lora["triggerWord"],
+                                "message": f"LoRA ready! Use trigger word '{current_lora['triggerWord']}' in generation",
+                            }),
+                        }
+                        break
+                    elif current_status == "deployment_failed":
+                        yield {
+                            "id": str(event_counter),
+                            "event": "deployment_error",
+                            "data": json.dumps({
+                                "code": current_lora.get("errorCode", "DEPLOYMENT_FAILED"),
+                                "message": current_lora.get("errorMessage", "Deployment failed"),
+                                "lora_url": current_lora.get("loraUrl"),
+                                "suggestion": "Try lora.deploy to retry deployment",
+                            }),
+                        }
+                        break
+
+                # Check if progress changed
+                elif current_progress != last_progress and current_status == "training":
+                    event_counter += 1
+                    yield {
+                        "id": str(event_counter),
+                        "event": "progress",
+                        "data": json.dumps({
+                            "step": current_step,
+                            "total": total_steps,
+                            "percent": current_progress,
+                            "message": f"Training step {current_step}/{total_steps}",
+                        }),
+                    }
+
+                last_status = current_status
+                last_progress = current_progress
+
+                # Exit if training is complete or failed
+                if current_status in ["completed", "failed", "deployed", "deployment_failed"]:
+                    break
+
+                # Poll every 5 seconds
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                logging.error(f"Error in SSE generator for LoRA {lora_id}: {e}")
+                event_counter += 1
+                yield {
+                    "id": str(event_counter),
+                    "event": "error",
+                    "data": json.dumps({
+                        "code": "SSE_ERROR",
+                        "message": f"Connection error: {str(e)}",
+                    }),
+                }
+                break
+
+    except Exception as e:
+        event_counter += 1
+        yield {
+            "id": str(event_counter),
+            "event": "error",
+            "data": json.dumps({
+                "code": "LORA_ERROR",
+                "message": f"Failed to get LoRA status: {str(e)}",
+            }),
+        }
 
 
 @app.get("/api/training/{lora_id}/events")
-async def training_events(lora_id: str):
-    """SSE endpoint for real-time LoRA training progress.
+async def training_events(lora_id: str, lastEventId: int = Query(default=0, description="Last event ID for reconnection")):
+    """SSE endpoint for real-time LoRA training progress with reconnection support.
 
     Connect with EventSource to receive progress updates:
+    - event: status - Initial/current status
+    - event: training_started - Training began
     - event: progress - Training step updates
-    - event: complete - Training finished successfully
+    - event: training_complete - Training finished, deployment starting
+    - event: complete - Training and deployment finished successfully
     - event: error - Training failed
+    - event: deployment_error - Deployment failed
 
+    Supports reconnection via ?lastEventId=X parameter.
     Part of the AFD Handoff Pattern for long-running operations.
     """
-    return EventSourceResponse(training_event_generator(lora_id))
+    return EventSourceResponse(training_event_generator(lora_id, last_event_id=lastEventId))
 
 
 @app.post("/api/lora/{lora_id}/upload-url")
@@ -666,6 +778,157 @@ async def remove_favorite(job_id: str, image_index: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Webhook Endpoints ---
+
+
+async def deploy_with_error_handling(lora_id: str, url: str, name: str):
+    """Deploy LoRA to Fireworks with retry and error tracking."""
+    from src.ml.deployment import deploy_to_fireworks
+
+    convex = get_convex_client()
+    max_attempts = 3
+
+    for attempt in range(max_attempts):
+        try:
+            model_id = await deploy_to_fireworks(url, name)
+            await convex.update_lora(lora_id, {
+                "status": "deployed",
+                "fireworksModelId": model_id,
+            })
+            logging.info(f"LoRA {lora_id} deployed successfully to Fireworks: {model_id}")
+            return
+        except Exception as e:
+            logging.error(f"Deployment attempt {attempt+1} failed for LoRA {lora_id}: {e}")
+            if attempt == max_attempts - 1:
+                await convex.update_lora(lora_id, {
+                    "status": "deployment_failed",
+                    "errorMessage": str(e),
+                    "errorCode": "FIREWORKS_DEPLOYMENT_FAILED",
+                })
+            else:
+                await asyncio.sleep(5 * (attempt + 1))  # Exponential backoff
+
+
+@app.post("/api/webhooks/replicate/training")
+async def replicate_training_webhook(request: Request):
+    """Handle Replicate training webhooks with signature verification."""
+
+    # Get webhook secret
+    webhook_secret = os.getenv("REPLICATE_WEBHOOK_SECRET")
+    if not webhook_secret:
+        logging.error("REPLICATE_WEBHOOK_SECRET not configured")
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+
+    # Verify webhook signature
+    signature = request.headers.get("Webhook-Signature", "")
+    body = await request.body()
+
+    expected = hmac.new(
+        webhook_secret.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(f"sha256={expected}", signature):
+        logging.warning(f"Invalid webhook signature from {request.client.host}")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    training_id = payload.get("id")
+    if not training_id:
+        raise HTTPException(status_code=400, detail="Missing training ID in payload")
+
+    convex = get_convex_client()
+
+    # Idempotency check
+    existing_event = await convex.get_webhook_event_by_id(training_id)
+    if existing_event:
+        return {"ok": True, "skipped": True, "reason": "already_processed"}
+
+    # Record event before processing
+    await convex.create_webhook_event({
+        "eventId": training_id,
+        "processedAt": int(time.time() * 1000),
+        "eventType": payload.get("status", "unknown"),
+    })
+
+    # Find LoRA
+    lora = await convex.get_lora_by_replicate_id(training_id)
+    if not lora:
+        logging.error(f"LoRA not found for training {training_id}")
+        return {"ok": False, "error": "lora_not_found"}
+
+    lora_id = lora["_id"]
+    status = payload.get("status")
+
+    if status == "succeeded":
+        output_url = payload.get("output", {}).get("weights") if payload.get("output") else None
+        if not output_url:
+            logging.error(f"No weights URL in successful training {training_id}")
+            await convex.update_lora(lora_id, {
+                "status": "failed",
+                "errorMessage": "Training completed but no weights URL provided",
+                "errorCode": "MISSING_WEIGHTS_URL",
+            })
+        else:
+            # Set intermediate status
+            await convex.update_lora(lora_id, {
+                "status": "deployment_pending",
+                "loraUrl": output_url,
+                "completedAt": int(time.time() * 1000),
+                "progress": 100,
+                "currentStep": lora.get("steps", 1000),
+            })
+
+            # Trigger async deployment
+            asyncio.create_task(
+                deploy_with_error_handling(lora_id, output_url, lora["name"])
+            )
+
+    elif status == "failed":
+        error_message = payload.get("error", "Training failed")
+        await convex.update_lora(lora_id, {
+            "status": "failed",
+            "errorMessage": error_message,
+            "errorCode": "REPLICATE_TRAINING_FAILED",
+        })
+
+    elif status == "processing":
+        # Update progress if provided
+        logs = payload.get("logs", "")
+        progress_info = extract_progress_from_logs(logs)
+        if progress_info:
+            await convex.update_lora(lora_id, progress_info)
+
+    return {"ok": True}
+
+
+def extract_progress_from_logs(logs: str) -> dict:
+    """Extract progress information from Replicate training logs."""
+    if not logs:
+        return {}
+
+    # Try to extract step information from logs
+    # Replicate LoRA training typically outputs: "Step 123/1000"
+    import re
+    step_match = re.search(r"Step (\d+)/(\d+)", logs)
+    if step_match:
+        current_step = int(step_match.group(1))
+        total_steps = int(step_match.group(2))
+        progress = int((current_step / total_steps) * 100)
+
+        return {
+            "currentStep": current_step,
+            "progress": progress,
+        }
+
+    return {}
 
 
 # --- Static Files (Web UI) ---
