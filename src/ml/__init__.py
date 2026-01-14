@@ -361,6 +361,94 @@ class ReplicateGenerator(ImageGenerator):
 
         return images
 
+    async def generate_with_lora(
+        self,
+        prompt: str,
+        asset_type: AssetType,
+        model: ModelId,
+        quality: QualityPreset,
+        count: int,
+        lora_url: str,
+        lora_scale: float = 1.0,
+    ) -> list[GeneratedImage]:
+        """Generate images using FLUX dev-lora with custom LoRA weights.
+        
+        Args:
+            prompt: Text description of the image
+            asset_type: Type of asset to generate
+            model: Model ID (ignored, always uses FLUX dev-lora)
+            quality: Quality preset affecting inference steps
+            count: Number of images to generate
+            lora_url: URL to LoRA weights (safetensors format)
+            lora_scale: Strength of LoRA effect (0.0 to 2.0)
+        """
+        import replicate
+        import random
+
+        # Build enhanced prompt based on asset type
+        from src.core.types import ASSET_TYPE_CONFIGS
+
+        asset_config = ASSET_TYPE_CONFIGS[asset_type]
+        enhanced_prompt = asset_config.prompt_template.replace("{subject}", prompt)
+
+        # Quality to inference steps mapping
+        steps_map = {"draft": 20, "standard": 28, "high": 40}
+        num_steps = steps_map.get(quality.value, 28)
+        
+        # Quality to output_quality mapping
+        quality_map = {"draft": 70, "standard": 85, "high": 95}
+        output_quality = quality_map.get(quality.value, 85)
+
+        images = []
+        for i in range(count):
+            seed = random.randint(1, 999999)
+            
+            # Debug: print what we're doing
+            print(f"[REPLICATE+LORA] Using model: {self.MODEL_ID}")
+            print(f"[REPLICATE+LORA] LoRA URL: {lora_url[:50]}...")
+            print(f"[REPLICATE+LORA] Prompt: {enhanced_prompt[:50]}...")
+            
+            # Run prediction with FLUX dev-lora + custom LoRA
+            output = await replicate.async_run(
+                self.MODEL_ID,
+                input={
+                    "prompt": enhanced_prompt,
+                    "hf_lora": lora_url,  # Custom LoRA weights URL
+                    "lora_scale": lora_scale,
+                    "go_fast": True,
+                    "guidance": 3.5,  # Slightly higher for LoRA
+                    "megapixels": "1",
+                    "num_outputs": 1,
+                    "aspect_ratio": "1:1",
+                    "output_format": "webp",
+                    "output_quality": output_quality,
+                    "num_inference_steps": num_steps,
+                    "seed": seed,
+                },
+            )
+
+            # Handle output - FLUX returns a list of FileOutput objects
+            if isinstance(output, list) and len(output) > 0:
+                item = output[0]
+                url = item.url if hasattr(item, 'url') else str(item)
+            elif hasattr(output, 'url'):
+                url = output.url
+            else:
+                url = str(output)
+
+            if url:
+                images.append(
+                    GeneratedImage(
+                        index=i,
+                        url=url,
+                        width=1024,
+                        height=1024,
+                        seed=seed,
+                    )
+                )
+
+        return images
+
 
 def get_generator(backend: str = "mock") -> ImageGenerator:
     """Get an image generator by backend name.

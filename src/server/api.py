@@ -530,6 +530,88 @@ async def delete_lora_endpoint(lora_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- Upload Endpoints ---
+
+
+@app.post("/api/lora/{lora_id}/upload-url")
+async def get_upload_url(lora_id: str):
+    """Generate a Convex storage upload URL for training images."""
+    try:
+        convex = get_convex_client()
+        
+        # Verify LoRA exists
+        lora = await convex.get_lora(lora_id)
+        if not lora:
+            raise HTTPException(status_code=404, detail=f"LoRA '{lora_id}' not found")
+        
+        # Generate upload URL
+        upload_url = await convex.generate_upload_url()
+        return {
+            "success": True,
+            "data": {
+                "uploadUrl": upload_url,
+                "loraId": lora_id,
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to generate upload URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class TrainingImageRequest(BaseModel):
+    lora_id: str = Field(..., description="LoRA ID")
+    storage_id: str = Field(..., description="Convex storage ID from upload")
+    filename: str = Field(..., description="Original filename")
+    file_type: str = Field(default="image/png", description="MIME type")
+    file_size: int = Field(default=0, description="File size in bytes")
+
+
+@app.post("/api/training-images")
+async def create_training_image(request: TrainingImageRequest):
+    """Register a training image after upload to Convex storage."""
+    try:
+        convex = get_convex_client()
+        
+        # Create training image record - match Convex schema field names
+        import time
+        image_id = await convex.create_training_image({
+            "loraId": request.lora_id,
+            "storageId": request.storage_id,
+            "filename": request.filename,
+            "sizeBytes": float(request.file_size),  # Convex expects sizeBytes, not fileSize
+            "uploadedAt": float(time.time() * 1000),  # Convex expects uploadedAt timestamp
+        })
+        
+        # Get current image count (don't try to update LoRA - no imageCount field)
+        count = await convex.count_training_images_by_lora(request.lora_id)
+        
+        return {
+            "success": True,
+            "data": {
+                "id": image_id,
+                "loraId": request.lora_id,
+                "imageCount": count,
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to create training image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lora/{lora_id}/training-images")
+async def list_training_images(lora_id: str):
+    """List training images for a LoRA."""
+    try:
+        convex = get_convex_client()
+        images = await convex.list_training_images_by_lora(lora_id)
+        return {"success": True, "data": images}
+    except Exception as e:
+        logging.error(f"Failed to list training images: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Model Endpoints ---
 
 

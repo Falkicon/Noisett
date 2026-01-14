@@ -383,24 +383,75 @@ async function handleFiles(files) {
 
   const preview = $('#upload-preview');
   preview.innerHTML = '';
+  
+  let uploadedCount = 0;
+  const loraId = state.selectedLora._id;
 
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
 
-    // Preview
+    // Preview immediately
+    const div = document.createElement('div');
+    div.className = 'upload-preview-item';
+    div.innerHTML = '<div class="uploading-indicator">⏳</div>';
+    preview.appendChild(div);
+    
     const reader = new FileReader();
     reader.onload = (e) => {
-      const div = document.createElement('div');
-      div.className = 'upload-preview-item';
       div.innerHTML = `<img src="${e.target.result}">`;
-      preview.appendChild(div);
     };
     reader.readAsDataURL(file);
+    
+    try {
+      // 1. Get upload URL from backend
+      const urlResponse = await API.getUploadUrl(loraId);
+      const uploadUrl = urlResponse.data.uploadUrl;
+      
+      // 2. Upload file to Convex storage
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        body: file,
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.status}`);
+      }
+      
+      const { storageId } = await uploadResponse.json();
+      
+      // 3. Register training image in Convex
+      await API.request('POST', '/api/training-images', {
+        lora_id: loraId,
+        storage_id: storageId,
+        filename: file.name,
+        file_type: file.type,
+        file_size: file.size,
+      });
+      
+      uploadedCount++;
+      div.classList.add('uploaded');
+      
+    } catch (error) {
+      console.error(`Failed to upload ${file.name}:`, error);
+      div.classList.add('upload-error');
+      div.title = error.message;
+    }
   }
   
-  // Note: Upload to Convex requires backend proxy (CORS restriction)
-  // For now, previews are shown but files aren't uploaded to cloud
-  console.log(`${files.length} files previewed (upload needs API proxy)`);
+  console.log(`${uploadedCount}/${files.length} files uploaded to Convex`);
+  
+  // Refresh LoRA to get updated image count
+  if (uploadedCount > 0) {
+    try {
+      const updatedLora = await API.getLora(loraId);
+      if (updatedLora.success) {
+        state.selectedLora = updatedLora.data;
+        showLoraDetail();
+      }
+    } catch (e) {
+      console.error('Failed to refresh LoRA:', e);
+    }
+  }
 }
 
 async function startTraining() {
