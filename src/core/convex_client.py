@@ -229,6 +229,96 @@ class ConvexClient:
         )
         return result
 
+    # Training images operations
+
+    async def create_training_image(self, image_data: Dict[str, Any]) -> str:
+        """Create a training image record.
+
+        Args:
+            image_data: Image fields (loraId, storageId, filename, etc.)
+
+        Returns:
+            Created training image ID
+        """
+        result = await self._make_request("POST", "/api/training-images/create", data=image_data)
+        return result["id"]
+
+    async def list_training_images_by_lora(self, lora_id: str) -> List[Dict[str, Any]]:
+        """List training images for a LoRA.
+
+        Args:
+            lora_id: LoRA ID
+
+        Returns:
+            List of training image data
+        """
+        result = await self._make_request(
+            "GET",
+            "/api/training-images/list-by-lora",
+            params={"loraId": lora_id}
+        )
+        return result
+
+    async def count_training_images_by_lora(self, lora_id: str) -> int:
+        """Count training images for a LoRA.
+
+        Args:
+            lora_id: LoRA ID
+
+        Returns:
+            Count of training images
+        """
+        result = await self._make_request(
+            "GET",
+            "/api/training-images/count-by-lora",
+            params={"loraId": lora_id}
+        )
+        return result["count"]
+
+    async def delete_training_image(self, image_id: str) -> None:
+        """Delete a training image by ID.
+
+        Args:
+            image_id: Training image ID to delete
+        """
+        await self._make_request(
+            "DELETE",
+            "/api/training-images/delete",
+            params={"id": image_id}
+        )
+
+    async def delete_training_images_by_lora(self, lora_id: str) -> None:
+        """Delete all training images for a LoRA.
+
+        Args:
+            lora_id: LoRA ID
+        """
+        await self._make_request(
+            "DELETE",
+            "/api/training-images/delete-by-lora",
+            params={"loraId": lora_id}
+        )
+
+    # Storage operations
+
+    async def generate_upload_url(self) -> str:
+        """Generate a Convex storage upload URL.
+
+        Returns:
+            Upload URL for file storage
+        """
+        result = await self._make_request("POST", "/api/storage/generate-upload-url")
+        return result["uploadUrl"]
+
+    async def get_storage_usage(self) -> Dict[str, Any]:
+        """Get storage usage information.
+
+        Returns:
+            Storage usage data with used_bytes, quota_bytes, usage_percent
+        """
+        result = await self._make_request("GET", "/api/storage/usage")
+        return result
+
     # Webhook event operations
 
     async def create_webhook_event(self, event_data: Dict[str, Any]) -> str:

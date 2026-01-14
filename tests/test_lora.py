@@ -42,13 +42,48 @@ def mock_convex_client():
     """Mock ConvexClient for tests."""
     mock_client = AsyncMock()
 
-    # Default return values
-    mock_client.get_lora_by_trigger_word.return_value = None
-    mock_client.create_lora.return_value = "lora_123456"
-    mock_client.get_lora.return_value = None
+    # Store created LoRAs to simulate persistence
+    mock_client._loras = {}
+    mock_client._trigger_words = set()
+
+    def get_lora_side_effect(lora_id):
+        return mock_client._loras.get(lora_id)
+
+    def get_lora_by_trigger_word_side_effect(trigger_word):
+        if trigger_word in mock_client._trigger_words:
+            return MOCK_LORA_DATA  # Return existing LoRA
+        return None
+
+    def create_lora_side_effect(lora_data):
+        lora_id = "lora_123456"
+        mock_client._loras[lora_id] = {**MOCK_LORA_DATA, **lora_data, "_id": lora_id}
+        mock_client._trigger_words.add(lora_data["triggerWord"])
+        return lora_id
+
+    # Set up side effects
+    mock_client.get_lora.side_effect = get_lora_side_effect
+    mock_client.get_lora_by_trigger_word.side_effect = get_lora_by_trigger_word_side_effect
+    mock_client.create_lora.side_effect = create_lora_side_effect
+
+    # Default return values for other methods
     mock_client.list_loras.return_value = []
     mock_client.update_lora.return_value = None
     mock_client.delete_lora.return_value = None
+
+    # Phase 2 training images methods
+    mock_client.create_training_image.return_value = "image_123456"
+    mock_client.list_training_images_by_lora.return_value = []
+    mock_client.count_training_images_by_lora.return_value = 0
+    mock_client.delete_training_image.return_value = None
+    mock_client.delete_training_images_by_lora.return_value = None
+
+    # Phase 2 storage methods
+    mock_client.generate_upload_url.return_value = "https://convex.storage/upload/abc123"
+    mock_client.get_storage_usage.return_value = {
+        "used_bytes": 0,
+        "quota_bytes": 10737418240,
+        "usage_percent": 0
+    }
 
     return mock_client
 
@@ -160,12 +195,15 @@ async def test_upload_images_success():
     )
     lora_id = create_result.data.lora.id
 
-    # Upload images
+    # Upload images (need at least 5 for Phase 2 validation)
     input_data = UploadImagesInput(
         lora_id=lora_id,
         images=[
             {"url": "https://example.com/img1.jpg", "caption": "Style example 1"},
             {"url": "https://example.com/img2.jpg", "caption": "Style example 2"},
+            {"url": "https://example.com/img3.jpg", "caption": "Style example 3"},
+            {"url": "https://example.com/img4.jpg", "caption": "Style example 4"},
+            {"url": "https://example.com/img5.jpg", "caption": "Style example 5"},
         ],
     )
 
@@ -173,8 +211,8 @@ async def test_upload_images_success():
 
     assert result.success is True
     assert result.data is not None
-    assert result.data.uploaded_count == 2
-    assert len(result.data.lora.images) == 2
+    assert result.data.uploaded_count == 5
+    assert len(result.data.lora.images) == 5
 
 
 @pytest.mark.asyncio

@@ -159,4 +159,123 @@ http.route({
   }),
 });
 
+// Training Images endpoints
+http.route({
+  path: "/api/training-images/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const id = await ctx.runMutation(internal.trainingImages.create, body);
+    return new Response(JSON.stringify({ id }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/training-images/list-by-lora",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const loraId = url.searchParams.get("loraId");
+    if (!loraId) {
+      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const data = await ctx.runQuery(internal.trainingImages.listByLora, { loraId });
+    return new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/training-images/count-by-lora",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const loraId = url.searchParams.get("loraId");
+    if (!loraId) {
+      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const count = await ctx.runQuery(internal.trainingImages.countByLora, { loraId });
+    return new Response(JSON.stringify({ count }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/training-images/delete",
+  method: "DELETE",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return new Response(JSON.stringify({ error: "id parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    await ctx.runMutation(internal.trainingImages.deleteById, { id });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/training-images/delete-by-lora",
+  method: "DELETE",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const loraId = url.searchParams.get("loraId");
+    if (!loraId) {
+      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    await ctx.runMutation(internal.trainingImages.deleteByLora, { loraId });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+// Storage upload URL endpoint
+http.route({
+  path: "/api/storage/generate-upload-url",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const uploadUrl = await ctx.storage.generateUploadUrl();
+    return new Response(JSON.stringify({ uploadUrl }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+// Storage usage endpoint (for quota checking)
+http.route({
+  path: "/api/storage/usage",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    // Note: Convex doesn't expose storage usage in the API yet
+    // For now, return a mock response that can be used for quota checking
+    // In a real implementation, this would query actual storage usage
+    return new Response(JSON.stringify({
+      used_bytes: 0,
+      quota_bytes: 10737418240, // 10GB default
+      usage_percent: 0
+    }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
 export default http;
