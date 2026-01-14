@@ -25,9 +25,147 @@ from fastmcp import FastMCP
 # Create MCP server
 mcp = FastMCP(
     name="noisett",
-    version="0.1.0",
+    version="0.9.2",
     instructions="Generate on-brand illustrations and icons using AI",
 )
+
+
+# --- Bootstrap Commands (AFD Standard) ---
+
+
+# Registry of all commands with their metadata
+COMMANDS = {
+    "asset_generate": {"tags": ["asset", "create", "write"], "mutation": True, "description": "Generate brand-aligned images from a text prompt"},
+    "asset_types": {"tags": ["asset", "list", "read", "bootstrap"], "mutation": False, "description": "List available asset types"},
+    "job_status": {"tags": ["job", "read", "single"], "mutation": False, "description": "Get job status"},
+    "job_cancel": {"tags": ["job", "delete", "write", "destructive"], "mutation": True, "description": "Cancel a job"},
+    "job_list": {"tags": ["job", "list", "read"], "mutation": False, "description": "List recent jobs"},
+    "model_list": {"tags": ["model", "list", "read", "bootstrap"], "mutation": False, "description": "List available models"},
+    "model_info": {"tags": ["model", "read", "single"], "mutation": False, "description": "Get model details"},
+    "history_list": {"tags": ["history", "list", "read"], "mutation": False, "description": "List generation history"},
+    "history_get": {"tags": ["history", "read", "single"], "mutation": False, "description": "Get generation details"},
+    "history_delete": {"tags": ["history", "delete", "write", "destructive"], "mutation": True, "description": "Delete from history"},
+    "favorites_add": {"tags": ["favorites", "create", "write"], "mutation": True, "description": "Add to favorites"},
+    "favorites_list": {"tags": ["favorites", "list", "read"], "mutation": False, "description": "List favorites"},
+    "favorites_remove": {"tags": ["favorites", "delete", "write"], "mutation": True, "description": "Remove from favorites"},
+}
+
+
+@mcp.tool(meta={"tags": ["bootstrap", "help"], "mutation": False})
+async def noisett_help(
+    tag: str | None = None,
+    category: str | None = None,
+) -> dict:
+    """List available Noisett commands with optional filtering.
+    
+    Use this to discover what commands are available and their purpose.
+    Filter by tag or category to find relevant commands.
+    
+    Args:
+        tag: Filter by tag (e.g., 'read', 'write', 'destructive')
+        category: Filter by category (e.g., 'asset', 'job', 'model')
+    
+    Returns:
+        List of commands with descriptions and tags
+    """
+    result = []
+    for name, meta in COMMANDS.items():
+        # Filter by tag
+        if tag and tag not in meta["tags"]:
+            continue
+        # Filter by category (first tag is typically the category)
+        if category and meta["tags"][0] != category:
+            continue
+        result.append({
+            "name": name,
+            "description": meta["description"],
+            "tags": meta["tags"],
+            "mutation": meta["mutation"],
+        })
+    
+    return {
+        "success": True,
+        "data": {"commands": result, "total": len(result)},
+        "reasoning": f"Found {len(result)} commands" + (f" matching filters" if tag or category else ""),
+    }
+
+
+@mcp.tool(meta={"tags": ["bootstrap", "docs"], "mutation": False})
+async def noisett_docs() -> dict:
+    """Generate markdown documentation for all Noisett commands.
+    
+    Returns complete documentation suitable for agent context or
+    human reference.
+    
+    Returns:
+        Markdown documentation string
+    """
+    lines = ["# Noisett Commands", "", "AI-powered brand asset generation.", ""]
+    
+    # Group by category
+    categories: dict[str, list] = {}
+    for name, meta in COMMANDS.items():
+        cat = meta["tags"][0]
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append((name, meta))
+    
+    for cat, cmds in sorted(categories.items()):
+        lines.append(f"## {cat.title()}")
+        lines.append("")
+        for name, meta in cmds:
+            mutation = "⚠️ " if meta["mutation"] else ""
+            lines.append(f"- **{name}**: {mutation}{meta['description']}")
+        lines.append("")
+    
+    return {
+        "success": True,
+        "data": {"markdown": "\n".join(lines)},
+        "reasoning": f"Generated docs for {len(COMMANDS)} commands",
+    }
+
+
+@mcp.tool(meta={"tags": ["bootstrap", "schema"], "mutation": False})
+async def noisett_schema(command: str | None = None) -> dict:
+    """Export JSON schemas for command inputs.
+    
+    Returns Pydantic-generated JSON schemas for command validation.
+    
+    Args:
+        command: Specific command to get schema for (optional, all if omitted)
+    
+    Returns:
+        JSON schemas for command inputs
+    """
+    from src.commands.asset import AssetGenerateInput
+    from src.commands.job import JobStatusInput, JobCancelInput, JobListInput
+    from src.commands.model import ModelInfoInput
+    
+    schemas = {
+        "asset_generate": AssetGenerateInput.model_json_schema(),
+        "job_status": JobStatusInput.model_json_schema(),
+        "job_cancel": JobCancelInput.model_json_schema(),
+        "job_list": JobListInput.model_json_schema(),
+        "model_info": ModelInfoInput.model_json_schema(),
+    }
+    
+    if command:
+        if command not in schemas:
+            return {
+                "success": False,
+                "error": {"code": "NOT_FOUND", "message": f"Unknown command: {command}"},
+            }
+        return {
+            "success": True,
+            "data": {"command": command, "schema": schemas[command]},
+            "reasoning": f"Schema for {command}",
+        }
+    
+    return {
+        "success": True,
+        "data": {"schemas": schemas},
+        "reasoning": f"Schemas for {len(schemas)} commands",
+    }
 
 
 # --- Asset Commands ---
