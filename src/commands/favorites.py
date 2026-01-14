@@ -13,7 +13,7 @@ import sqlite3
 from pydantic import BaseModel, Field
 
 from src.core.errors import ErrorCode, get_error_template
-from src.core.result import CommandResult
+from afd.core import CommandResult
 from src.core.storage import (
     add_favorite,
     get_favorite,

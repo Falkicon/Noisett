@@ -17,7 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..core.errors import ErrorCode
-from ..core.result import CommandResult, Warning, error, success
+from afd.core import CommandResult, Warning, error, success
 from ..core.types import (
     BaseModelType,
     Lora,

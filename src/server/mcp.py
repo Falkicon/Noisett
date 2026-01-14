@@ -33,7 +33,7 @@ mcp = FastMCP(
 # --- Asset Commands ---
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["asset", "create", "write"], "mutation": True})
 async def asset_generate(
     prompt: str,
     asset_type: str = "product",
@@ -70,7 +70,7 @@ async def asset_generate(
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["asset", "list", "read", "bootstrap"], "mutation": False})
 async def asset_types() -> dict:
     """List available asset types and their configurations.
     
@@ -89,7 +89,7 @@ async def asset_types() -> dict:
 # --- Job Commands ---
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["job", "read", "single"], "mutation": False})
 async def job_status(job_id: str) -> dict:
     """Get the current status of a generation job.
     
@@ -109,7 +109,7 @@ async def job_status(job_id: str) -> dict:
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["job", "delete", "write", "destructive"], "mutation": True})
 async def job_cancel(job_id: str) -> dict:
     """Cancel a queued or in-progress generation job.
     
@@ -128,7 +128,7 @@ async def job_cancel(job_id: str) -> dict:
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["job", "list", "read"], "mutation": False})
 async def job_list(limit: int = 20, status_filter: str | None = None) -> dict:
     """List recent generation jobs.
     
@@ -155,7 +155,7 @@ async def job_list(limit: int = 20, status_filter: str | None = None) -> dict:
 # --- Model Commands ---
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["model", "list", "read", "bootstrap"], "mutation": False})
 async def model_list() -> dict:
     """List available image generation models.
     
@@ -171,7 +171,7 @@ async def model_list() -> dict:
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["model", "read", "single"], "mutation": False})
 async def model_info(model_id: str) -> dict:
     """Get detailed information about a specific model.
     
@@ -195,7 +195,7 @@ async def model_info(model_id: str) -> dict:
 # --- History Commands ---
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["history", "list", "read"], "mutation": False})
 async def history_list(
     limit: int = 50,
     offset: int = 0,
@@ -227,7 +227,7 @@ async def history_list(
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["history", "read", "single"], "mutation": False})
 async def history_get(generation_id: str) -> dict:
     """Get details of a specific generation from history.
     
@@ -248,7 +248,7 @@ async def history_get(generation_id: str) -> dict:
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["history", "delete", "write", "destructive"], "mutation": True})
 async def history_delete(generation_id: str) -> dict:
     """Delete a generation from history.
     
@@ -275,7 +275,7 @@ async def history_delete(generation_id: str) -> dict:
 # --- Favorites Commands ---
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["favorites", "create", "write"], "mutation": True})
 async def favorites_add(
     generation_id: str,
     prompt: str | None = None,
@@ -307,7 +307,7 @@ async def favorites_add(
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["favorites", "list", "read"], "mutation": False})
 async def favorites_list(limit: int = 50) -> dict:
     """List favorited generations.
     
@@ -330,7 +330,7 @@ async def favorites_list(limit: int = 50) -> dict:
     return result.model_dump(exclude_none=True)
 
 
-@mcp.tool()
+@mcp.tool(meta={"tags": ["favorites", "delete", "write"], "mutation": True})
 async def favorites_remove(generation_id: str) -> dict:
     """Remove a generation from favorites.
     

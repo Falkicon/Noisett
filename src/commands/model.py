@@ -8,7 +8,7 @@ Commands:
 from pydantic import BaseModel, Field
 
 from src.core.errors import ErrorCode, get_error_template
-from src.core.result import CommandResult, Warning, error, success
+from afd.core import CommandResult, Warning, error, success
 from src.core.types import MODEL_CONFIGS, Model, ModelId
 
 

@@ -1,6 +1,6 @@
 """Core types and utilities for Noisett."""
 
-from src.core.result import CommandResult, CommandError, Warning, success, error
+from afd.core import CommandResult, CommandError, Warning, success, error
 from src.core.errors import ErrorCode
 from src.core.types import (
     AssetType,

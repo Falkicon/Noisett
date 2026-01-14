@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "Noisett",
+    "noisett",
+    "FastMCP",
+    "Pydantic",
+    "uvicorn",
+    "FastAPI",
+    "pyproject",
+    "pytest",
+    "SDXL",
+    "FLUX",
+    "Fireworks",
+    "LoRA",
+    "lora"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "__pycache__",
+    "*.lock",
+    ".venv",
+    "venv"
+  ]
+}

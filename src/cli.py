@@ -83,7 +83,7 @@ from src.commands.favorites import (
     favorites_list,
     favorites_remove,
 )
-from src.core.result import CommandResult
+from afd.core import CommandResult
 from src.core.auth import get_anonymous_user_id
 
 
@@ -185,7 +185,7 @@ def print_result(result: CommandResult) -> None:
 async def run_command(command_name: str, input_json: str) -> CommandResult:
     """Run a command with JSON input."""
     if command_name not in COMMANDS:
-        from src.core.result import error
+        from afd.core import error
         return error(
             code="COMMAND_NOT_FOUND",
             message=f"Unknown command: {command_name}",
@@ -208,14 +208,14 @@ async def run_command(command_name: str, input_json: str) -> CommandResult:
         return result
         
     except json.JSONDecodeError as e:
-        from src.core.result import error
+        from afd.core import error
         return error(
             code="INVALID_JSON",
             message=f"Invalid JSON input: {e}",
             suggestion="Ensure input is valid JSON, e.g., '{\"key\": \"value\"}'",
         )
     except Exception as e:
-        from src.core.result import error
+        from afd.core import error
         return error(
             code="VALIDATION_ERROR",
             message=str(e),

@@ -19,7 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from src.core.errors import ErrorCode
-from src.core.result import CommandResult, error, success
+from afd.core import CommandResult, error, success
 from src.core.types import (
     ImageVariation,
     OutputFormat,

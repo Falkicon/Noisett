@@ -16,6 +16,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.9.2] - 2026-01-13
+
+### Changed
+
+- **AFD Package Integration** - Migrated from custom types to official `afd` PyPI package
+  - All imports now use `from afd.core import CommandResult, success, error, Warning`
+  - Removed custom `src/core/result.py` (now uses `afd.core`)
+  - Added `afd>=0.1.0` to `pyproject.toml` dependencies
+
+### Added
+
+- Contributed `suggestions` field to upstream AFD package (v0.1.1)
+  - Enables helpful next-step hints in command results
+  - Example: "Use lora.activate to enable this LoRA"
+
+---
+
 ## [0.9.0] - 2025-12-31
 
 ### Added

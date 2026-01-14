@@ -15,6 +15,7 @@ authors = [
 keywords = ["ai", "image-generation", "mcp", "agent-first"]
 
 dependencies = [
+    "afd>=0.1.0",
     "pydantic>=2.5.0",
     "fastmcp>=0.1.0",
     "fastapi>=0.109.0",
