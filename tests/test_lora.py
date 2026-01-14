@@ -1,4 +1,8 @@
-"""Tests for LoRA training commands (Phase 5)."""
+"""Tests for LoRA training commands (Phase 1 - Convex Storage Migration)."""
+
+import time
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from src.commands.lora import (
@@ -13,7 +17,6 @@ from src.commands.lora import (
     create,
     delete,
     list_loras,
-    reset_storage,
     status,
     train,
     upload_images,
@@ -21,30 +24,40 @@ from src.commands.lora import (
 from src.core.types import BaseModelType, LoraStatus
 
 
-def _complete_training(lora_id: str):
-    """Helper to simulate completed training for tests.
-    
-    Since train() now returns a handoff, tests that need a completed
-    LoRA should call this after train().
-    """
-    from datetime import datetime, timezone
-    from src.commands.lora import _loras
-    
-    lora = _loras.get(lora_id)
-    if lora:
-        lora.status = LoraStatus.COMPLETED
-        lora.completed_at = datetime.now(timezone.utc)
-        lora.progress = 100
-        lora.current_step = lora.steps
-        lora.lora_url = f"https://storage.noisett.ai/loras/{lora.id}/weights.safetensors"
+# Mock Convex data for tests
+MOCK_LORA_DATA = {
+    "_id": "lora_123456",
+    "name": "Test LoRA",
+    "triggerWord": "teststyle",
+    "baseModel": "flux",
+    "status": "created",
+    "steps": 1000,
+    "isActive": False,
+    "createdAt": int(time.time() * 1000),
+}
+
+
+@pytest.fixture
+def mock_convex_client():
+    """Mock ConvexClient for tests."""
+    mock_client = AsyncMock()
+
+    # Default return values
+    mock_client.get_lora_by_trigger_word.return_value = None
+    mock_client.create_lora.return_value = "lora_123456"
+    mock_client.get_lora.return_value = None
+    mock_client.list_loras.return_value = []
+    mock_client.update_lora.return_value = None
+    mock_client.delete_lora.return_value = None
+
+    return mock_client
 
 
 @pytest.fixture(autouse=True)
-def clean_storage():
-    """Reset storage before each test."""
-    reset_storage()
-    yield
-    reset_storage()
+def mock_get_convex_client(mock_convex_client):
+    """Auto-mock get_convex_client for all tests."""
+    with patch('src.commands.lora.get_convex_client', return_value=mock_convex_client):
+        yield mock_convex_client
 
 
 # =============================================================================
