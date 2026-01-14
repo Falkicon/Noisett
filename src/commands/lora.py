@@ -8,6 +8,9 @@ Commands for creating, managing, and training custom LoRA models:
 - lora.list: List all LoRA projects
 - lora.activate: Activate/deactivate a trained LoRA
 - lora.delete: Delete a LoRA project
+- lora.deploy: Deploy trained LoRA to Fireworks for inference
+- lora.estimate: Estimate training cost and time
+- lora.cleanup: Clean up orphaned training projects
 """
 
 import uuid
@@ -330,6 +333,25 @@ class CleanupLoraOutput(BaseModel):
         default=None, description="Storage space freed in MB"
     )
     cleaned_ids: list[str] = Field(..., description="IDs of cleaned LoRAs")
+
+
+class DeployLoraInput(BaseModel):
+    """Input for lora.deploy command."""
+
+    lora_id: str = Field(..., description="ID of the LoRA to deploy")
+    force_retry: bool = Field(
+        default=False,
+        description="Force retry deployment even if previous attempt was recent",
+    )
+
+
+class DeployLoraOutput(BaseModel):
+    """Output for lora.deploy command."""
+
+    lora: Lora = Field(..., description="Updated LoRA project")
+    fireworks_model_id: str | None = Field(
+        default=None, description="Fireworks model ID if deployment succeeded"
+    )
 
 
 # =============================================================================
@@ -1031,6 +1053,123 @@ async def cleanup(input: CleanupLoraInput) -> CommandResult[CleanupLoraOutput]:
         return error(
             code=ErrorCode.STORAGE_ERROR,
             message=f"Failed to cleanup orphaned LoRAs: {e}",
+            suggestion="Please try again",
+        )
+
+
+async def deploy(input: DeployLoraInput) -> CommandResult[DeployLoraOutput]:
+    """Deploy a trained LoRA to Fireworks for inference.
+
+    This manually triggers deployment for LoRAs that have completed training
+    but failed deployment, or for retrying failed deployments.
+    """
+    try:
+        convex = get_convex_client()
+
+        convex_lora = await convex.get_lora(input.lora_id)
+        if not convex_lora:
+            return error(
+                code=ErrorCode.LORA_NOT_FOUND,
+                message=f"LoRA '{input.lora_id}' not found",
+                suggestion="Use lora.list to see available LoRAs",
+            )
+
+        lora = await _convex_to_lora(convex_lora, convex)
+
+        # Check if LoRA is in a deployable state
+        deployable_states = [LoraStatus.COMPLETED, LoraStatus.DEPLOYMENT_FAILED]
+        if lora.status not in deployable_states:
+            return error(
+                code=ErrorCode.LORA_NOT_READY,
+                message=f"Cannot deploy LoRA in '{lora.status.value}' state",
+                suggestion="LoRA must have completed training (status: completed or deployment_failed)",
+            )
+
+        # Check if LoRA URL is available
+        lora_url = convex_lora.get("loraUrl")
+        if not lora_url:
+            return error(
+                code=ErrorCode.LORA_NOT_READY,
+                message="No LoRA weights URL found",
+                suggestion="LoRA training may not have completed successfully",
+            )
+
+        # Check if LoRA URL is still valid (24h expiry)
+        completed_at = convex_lora.get("completedAt")
+        if completed_at:
+            import time
+            hours_since_completion = (time.time() * 1000 - completed_at) / (1000 * 60 * 60)
+            if hours_since_completion > 24:
+                return error(
+                    code=ErrorCode.LORA_NOT_READY,
+                    message="LoRA weights URL has expired (24h limit)",
+                    suggestion="Re-train the LoRA to get fresh weights",
+                )
+
+        # Check if already deployed
+        if lora.status == LoraStatus.DEPLOYED:
+            fireworks_model_id = convex_lora.get("fireworksModelId")
+            return success(
+                data=DeployLoraOutput(lora=lora, fireworks_model_id=fireworks_model_id),
+                reasoning=f"LoRA '{lora.name}' is already deployed to Fireworks.",
+                suggestions=[
+                    f"Use in generation: asset.generate --lora {lora.id}",
+                    "Activate for use: lora.activate",
+                ],
+            )
+
+        # Set deployment pending status
+        await convex.update_lora(input.lora_id, {
+            "status": "deployment_pending",
+            "errorMessage": None,
+            "errorCode": None,
+        })
+
+        try:
+            # Deploy to Fireworks
+            from src.ml.deployment import deploy_to_fireworks
+            fireworks_model_id = await deploy_to_fireworks(lora_url, lora.name)
+
+            # Update to deployed status
+            await convex.update_lora(input.lora_id, {
+                "status": "deployed",
+                "fireworksModelId": fireworks_model_id,
+            })
+
+            # Update local LoRA object
+            lora.status = LoraStatus.DEPLOYED
+
+            return success(
+                data=DeployLoraOutput(lora=lora, fireworks_model_id=fireworks_model_id),
+                reasoning=f"LoRA '{lora.name}' deployed successfully to Fireworks (Model ID: {fireworks_model_id}).",
+                suggestions=[
+                    f"Use in generation: asset.generate --lora {lora.id}",
+                    "Activate for use: lora.activate",
+                ],
+            )
+
+        except Exception as e:
+            # Update to deployment failed status
+            await convex.update_lora(input.lora_id, {
+                "status": "deployment_failed",
+                "errorMessage": str(e),
+                "errorCode": "FIREWORKS_DEPLOYMENT_FAILED",
+            })
+
+            # Update local LoRA object
+            lora.status = LoraStatus.DEPLOYMENT_FAILED
+            lora.error_message = str(e)
+
+            return error(
+                code=ErrorCode.DEPLOYMENT_FAILED,
+                message=f"Deployment failed: {e}",
+                suggestion="Try again with force_retry=true, or check Fireworks API configuration",
+            )
+
+    except ConvexError as e:
+        return error(
+            code=ErrorCode.STORAGE_ERROR,
+            message=f"Failed to deploy LoRA: {e}",
             suggestion="Please try again",
         )
 

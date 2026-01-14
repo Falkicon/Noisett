@@ -46,6 +46,7 @@ class ErrorCode(str, Enum):
     UPLOAD_FAILED = "UPLOAD_FAILED"
     LORA_NOT_READY = "LORA_NOT_READY"
     CANNOT_DELETE_ACTIVE = "CANNOT_DELETE_ACTIVE"
+    DEPLOYMENT_FAILED = "DEPLOYMENT_FAILED"
 
     # Quality pipeline errors (Phase 6)
     IMAGE_URL_INVALID = "IMAGE_URL_INVALID"
@@ -179,6 +180,10 @@ ERROR_TEMPLATES = {
     ErrorCode.CANNOT_DELETE_ACTIVE: {
         "message": "Cannot delete an active LoRA",
         "suggestion": "Deactivate the LoRA first with lora.activate --active false",
+    },
+    ErrorCode.DEPLOYMENT_FAILED: {
+        "message": "LoRA deployment to Fireworks failed",
+        "suggestion": "Check Fireworks API configuration and retry with lora.deploy",
     },
     # Quality pipeline error templates (Phase 6)
     ErrorCode.IMAGE_URL_INVALID: {
