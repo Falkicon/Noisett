@@ -57,7 +57,7 @@ class GeneratedImage(BaseModel):
 
 class Job(BaseModel):
     """Image generation job.
-    
+
     Represents a single generation request that may produce multiple images.
     """
 
@@ -78,6 +78,9 @@ class Job(BaseModel):
     )
     error_message: str | None = Field(
         default=None, description="Error message if status is 'failed'"
+    )
+    lora_id: str | None = Field(
+        default=None, description="LoRA ID used for styled generation"
     )
 
 

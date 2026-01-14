@@ -35,12 +35,13 @@ from src.core.convex_client import get_convex_client
 
 class GenerateRequest(BaseModel):
     """Request body for image generation."""
-    
+
     prompt: str = Field(..., min_length=1, max_length=500, description="Image description")
     asset_type: str = Field(default="product", description="Type of asset to generate")
     model: str = Field(default="hidream", description="Model to use")
     quality: str = Field(default="standard", description="Quality preset")
     count: int = Field(default=4, ge=1, le=4, description="Number of variations")
+    lora: str | None = Field(default=None, description="LoRA ID to use for styled generation")
 
 
 class CancelRequest(BaseModel):
@@ -68,37 +69,116 @@ async def process_job(job_id: str):
     update_job(job)
     
     try:
-        # Get the appropriate generator based on ML_BACKEND env var
-        backend = os.environ.get("ML_BACKEND", "mock")
-        
-        if backend == "mock":
-            from src.ml import MockGenerator
-            generator = MockGenerator()
-        elif backend == "huggingface":
-            from src.ml import HuggingFaceGenerator
-            generator = HuggingFaceGenerator()
-        elif backend == "fireworks":
-            from src.ml import FireworksGenerator
-            generator = FireworksGenerator()
-        elif backend == "replicate":
-            from src.ml import ReplicateGenerator
-            generator = ReplicateGenerator()
+        # Handle LoRA generation with Fireworks/Replicate fallback
+        if job.lora_id:
+            # Get LoRA information from Convex
+            from src.core.convex_client import get_convex_client
+
+            convex = get_convex_client()
+            convex_lora = await convex.get_lora(job.lora_id)
+
+            if not convex_lora:
+                raise ValueError(f"LoRA '{job.lora_id}' not found")
+
+            fireworks_model_id = convex_lora.get("fireworksModelId")
+            lora_url = convex_lora.get("loraUrl")
+
+            # Try Fireworks first if deployed
+            if fireworks_model_id and convex_lora.get("status") == "deployed":
+                try:
+                    from src.ml import FireworksGenerator
+                    generator = FireworksGenerator()
+
+                    # Update progress
+                    job.progress = 0.3
+                    update_job(job)
+
+                    # Generate with Fireworks LoRA
+                    images = await generator.generate_with_lora(
+                        prompt=job.prompt,
+                        asset_type=job.asset_type,
+                        model=job.model,
+                        quality=job.quality,
+                        count=job.count,
+                        lora_model_id=fireworks_model_id,
+                    )
+
+                except Exception as fireworks_error:
+                    # Fallback to Replicate if Fireworks fails and lora_url is available
+                    if lora_url:
+                        from src.ml import ReplicateGenerator
+                        generator = ReplicateGenerator()
+
+                        # Update progress
+                        job.progress = 0.3
+                        update_job(job)
+
+                        # Generate with Replicate LoRA inference
+                        images = await generator.generate_with_lora(
+                            prompt=job.prompt,
+                            asset_type=job.asset_type,
+                            model=job.model,
+                            quality=job.quality,
+                            count=job.count,
+                            lora_url=lora_url,
+                        )
+                    else:
+                        raise ValueError(f"Fireworks LoRA inference failed and no Replicate fallback available: {fireworks_error}")
+
+            elif lora_url:
+                # Use Replicate directly if no Fireworks deployment
+                from src.ml import ReplicateGenerator
+                generator = ReplicateGenerator()
+
+                # Update progress
+                job.progress = 0.3
+                update_job(job)
+
+                # Generate with Replicate LoRA inference
+                images = await generator.generate_with_lora(
+                    prompt=job.prompt,
+                    asset_type=job.asset_type,
+                    model=job.model,
+                    quality=job.quality,
+                    count=job.count,
+                    lora_url=lora_url,
+                )
+            else:
+                raise ValueError("LoRA is not ready for inference - no Fireworks deployment or Replicate URL available")
+
         else:
-            from src.ml import MockGenerator
-            generator = MockGenerator()
-        
-        # Update progress
-        job.progress = 0.3
-        update_job(job)
-        
-        # Generate images
-        images = await generator.generate(
-            prompt=job.prompt,
-            asset_type=job.asset_type,
-            model=job.model,
-            quality=job.quality,
-            count=job.count,
-        )
+            # Regular generation without LoRA
+            # Get the appropriate generator based on ML_BACKEND env var
+            backend = os.environ.get("ML_BACKEND", "mock")
+
+            if backend == "mock":
+                from src.ml import MockGenerator
+                generator = MockGenerator()
+            elif backend == "huggingface":
+                from src.ml import HuggingFaceGenerator
+                generator = HuggingFaceGenerator()
+            elif backend == "fireworks":
+                from src.ml import FireworksGenerator
+                generator = FireworksGenerator()
+            elif backend == "replicate":
+                from src.ml import ReplicateGenerator
+                generator = ReplicateGenerator()
+            else:
+                from src.ml import MockGenerator
+                generator = MockGenerator()
+
+            # Update progress
+            job.progress = 0.3
+            update_job(job)
+
+            # Generate images
+            images = await generator.generate(
+                prompt=job.prompt,
+                asset_type=job.asset_type,
+                model=job.model,
+                quality=job.quality,
+                count=job.count,
+            )
         
         # Update job with results
         job.status = JobStatus.COMPLETE
@@ -201,6 +281,7 @@ async def generate_asset(request: GenerateRequest, background_tasks: BackgroundT
             model=ModelId(request.model),
             quality=QualityPreset(request.quality),
             count=request.count,
+            lora=request.lora,
         )
         result = await generate(input_data)
         
