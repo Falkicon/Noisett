@@ -55,14 +55,14 @@ dependencies = [
 - [x] Add `tags` and `mutation` fields to all command modules
 - [x] Add bootstrap tools to MCP server (`noisett_help`, `noisett_docs`, `noisett_schema`)
 
-### Phase 4: Handoff Pattern for Training (Deferred)
-- [ ] Use `from afd.core.handoff import HandoffResult`
-- [ ] Update `lora.train` to return SSE handoff endpoint
-- [ ] Add `/training/{id}/events` SSE endpoint to FastAPI
+### Phase 4: Handoff Pattern for Training ✅
+- [x] Use `from afd.core.handoff import create_handoff`
+- [x] Update `lora.train` to return SSE handoff endpoint
+- [x] Add `/api/training/{id}/events` SSE endpoint to FastAPI
 
-### Phase 5: JTBD Scenarios (Deferred)
-- [ ] Create `scenarios/` directory
-- [ ] Add workflow scenarios for LoRA and asset generation
+### Phase 5: JTBD Scenarios ✅
+- [x] Create `scenarios/` directory
+- [x] Add workflow scenarios for asset generation, LoRA training, favorites
 
 ### Phase 6: Verification & Docs ✅
 - [x] Run 100 existing tests (no regressions)

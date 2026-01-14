@@ -1,0 +1,92 @@
+# JTBD Scenario: LoRA Training Workflow
+# Tests the full LoRA training lifecycle for brand customization
+
+persona: brand-manager
+intent: Train a custom LoRA model for brand-specific imagery
+
+# Pre-conditions
+setup:
+  - Reset all storage
+
+# The workflow
+steps:
+  - name: Create a new LoRA project
+    command: lora_create
+    args:
+      name: "Xbox Brand Style"
+      trigger_word: "xboxstyle"
+      base_model: "sd35"
+      steps: 500
+    expect:
+      success: true
+      data.lora.status: created
+    save:
+      lora_id: data.lora.id
+
+  - name: Upload training images (batch 1)
+    command: lora_upload_images
+    args:
+      lora_id: $lora_id
+      images:
+        - url: "https://brand-assets.example.com/img1.jpg"
+          caption: "Xbox controller promo shot"
+        - url: "https://brand-assets.example.com/img2.jpg"
+          caption: "Xbox Series X product render"
+    expect:
+      success: true
+      data.uploaded_count: 2
+
+  - name: Upload more images to reach minimum
+    command: lora_upload_images
+    args:
+      lora_id: $lora_id
+      images:
+        - url: "https://brand-assets.example.com/img3.jpg"
+        - url: "https://brand-assets.example.com/img4.jpg"
+        - url: "https://brand-assets.example.com/img5.jpg"
+        - url: "https://brand-assets.example.com/img6.jpg"
+        - url: "https://brand-assets.example.com/img7.jpg"
+        - url: "https://brand-assets.example.com/img8.jpg"
+        - url: "https://brand-assets.example.com/img9.jpg"
+        - url: "https://brand-assets.example.com/img10.jpg"
+    expect:
+      success: true
+      data.lora.status: ready_to_train
+
+  - name: Start training
+    command: lora_train
+    args:
+      lora_id: $lora_id
+    expect:
+      success: true
+      data.protocol: sse
+      data.endpoint: contains(/api/training/)
+    save:
+      sse_endpoint: data.endpoint
+
+  - name: Check LoRA status during training
+    command: lora_status
+    args:
+      lora_id: $lora_id
+    expect:
+      success: true
+      data.lora.status: [training, completed]
+
+  - name: List all LoRAs
+    command: lora_list
+    expect:
+      success: true
+      data.loras: [contains: { id: $lora_id }]
+
+# Handoff verification (manual)
+handoff_verification:
+  - Connect to SSE endpoint $sse_endpoint
+  - Verify progress events are received
+  - Verify complete event fires when done
+
+# Success criteria for this JTBD
+success_signals:
+  - LoRA project created with correct settings
+  - Images uploaded successfully
+  - Training starts and returns SSE handoff
+  - LoRA appears in list with correct status

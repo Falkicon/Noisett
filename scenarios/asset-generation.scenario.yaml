@@ -1,0 +1,58 @@
+# JTBD Scenario: Asset Generation Workflow
+# Tests the core asset generation flow for brand teams
+
+persona: brand-designer
+intent: Generate on-brand product images quickly
+
+# Pre-conditions
+setup:
+  - Reset all storage
+
+# The workflow
+steps:
+  - name: Check available asset types
+    command: asset_types
+    expect:
+      success: true
+      data.types: [product, icon, logo, premium]
+
+  - name: List available models
+    command: model_list
+    expect:
+      success: true
+      data.models.length: "> 0"
+
+  - name: Generate product image
+    command: asset_generate
+    args:
+      prompt: "Modern minimalist water bottle, studio lighting"
+      asset_type: product
+      quality: standard
+      count: 4
+    expect:
+      success: true
+      data.job.status: queued
+    save:
+      job_id: data.job.id
+
+  - name: Check job status
+    command: job_status
+    args:
+      job_id: $job_id
+    expect:
+      success: true
+    # Note: In test mode, job may still be processing
+
+  - name: List recent jobs
+    command: job_list
+    args:
+      limit: 10
+    expect:
+      success: true
+      data.jobs: [contains: { id: $job_id }]
+
+# Success criteria for this JTBD
+success_signals:
+  - Job was created successfully
+  - Job appears in job list
+  - Asset types and models discoverable

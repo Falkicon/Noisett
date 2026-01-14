@@ -1,0 +1,66 @@
+# JTBD Scenario: Favorites and History Management
+# Tests organizing and retrieving past generations
+
+persona: creative-lead
+intent: Organize and reuse successful generations
+
+# Pre-conditions
+setup:
+  - Reset all storage
+
+# The workflow
+steps:
+  - name: Generate an asset
+    command: asset_generate
+    args:
+      prompt: "Vibrant app icon with gradient background"
+      asset_type: icon
+      quality: standard
+    expect:
+      success: true
+    save:
+      job_id: data.job.id
+
+  - name: View generation history
+    command: history_list
+    args:
+      limit: 10
+    expect:
+      success: true
+      # History may be empty in test mode before job completes
+
+  - name: Add to favorites
+    command: favorites_add
+    args:
+      generation_id: $job_id
+      prompt: "Vibrant app icon with gradient background"
+      notes: "Great colors, use for app store"
+    expect:
+      success: true
+      data.favorite.generation_id: $job_id
+
+  - name: List favorites
+    command: favorites_list
+    expect:
+      success: true
+      data.total: ">= 1"
+
+  - name: Remove from favorites
+    command: favorites_remove
+    args:
+      generation_id: $job_id
+    expect:
+      success: true
+
+  - name: Verify favorites empty
+    command: favorites_list
+    expect:
+      success: true
+      data.total: 0
+
+# Success criteria for this JTBD
+success_signals:
+  - Can add generations to favorites with notes
+  - Favorites list reflects added items
+  - Can remove from favorites
+  - History tracks generations over time
