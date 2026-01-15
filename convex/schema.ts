@@ -56,4 +56,33 @@ export default defineSchema({
     eventType: v.string(),
   })
     .index("by_event_id", ["eventId"]),
+
+  // Director Mode tables
+  assetTypes: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    prePrompt: v.string(),
+    postPrompt: v.string(),
+    model: v.string(),                    // "replicate:flux-dev-lora"
+    modelSettings: v.any(),               // Model-specific params
+    loraId: v.optional(v.id("loras")),
+    qualityPreset: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_active", ["isActive"]),
+
+  generations: defineTable({
+    assetTypeId: v.id("assetTypes"),
+    userPrompt: v.string(),
+    combinedPrompt: v.string(),
+    images: v.array(v.object({
+      url: v.string(),
+      width: v.number(),
+      height: v.number(),
+      seed: v.optional(v.number()),
+    })),
+    isFavorite: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_favorite", ["isFavorite"])
+    .index("by_created", ["createdAt"]),
 });
