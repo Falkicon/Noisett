@@ -360,12 +360,96 @@
             </div>
           </div>
 
-          <!-- LoRA Editor (simplified, reuses existing patterns) -->
+          <!-- LoRA Editor Panel -->
           <div id="lora-editor-panel" class="editor-panel hidden">
-            <div class="empty-state">
+            <!-- LoRA Empty State -->
+            <div id="lora-empty" class="empty-state">
               <span class="empty-icon">🎨</span>
-              <p>LoRA management coming soon</p>
-              <p class="hint">Use the main app for now</p>
+              <p>Select a LoRA or create a new one</p>
+            </div>
+
+            <!-- Create Form (hidden by default) -->
+            <div id="lora-create-form" class="lora-form hidden">
+              <h2 class="panel-title">Create New LoRA</h2>
+
+              <div class="form-group">
+                <label for="lora-name">Name</label>
+                <input type="text" id="lora-name" placeholder="Brand Icons Style">
+              </div>
+
+              <div class="form-group">
+                <label for="lora-trigger">Trigger Word</label>
+                <input type="text" id="lora-trigger" placeholder="brandicons">
+                <span class="hint">Use this word in prompts to activate the style</span>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="lora-model">Base Model</label>
+                  <select id="lora-model">
+                    <option value="flux">Flux</option>
+                    <option value="sdxl">SDXL</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="lora-steps">Training Steps</label>
+                  <input type="number" id="lora-steps" value="1000" min="100" max="5000">
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button id="lora-create-submit" class="btn btn-primary">Create LoRA</button>
+                <button id="lora-create-cancel" class="btn btn-secondary">Cancel</button>
+              </div>
+            </div>
+
+            <!-- LoRA Detail View (hidden by default) -->
+            <div id="lora-detail" class="lora-detail hidden">
+              <div class="lora-detail-header">
+                <h2 id="lora-detail-name" class="panel-title">LoRA Name</h2>
+                <span id="lora-detail-status" class="status-badge">created</span>
+              </div>
+
+              <div class="lora-meta">
+                <div class="meta-item">
+                  <span class="meta-label">Trigger:</span>
+                  <code id="lora-detail-trigger">triggername</code>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Model:</span>
+                  <span id="lora-detail-model">flux</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Images:</span>
+                  <span id="lora-detail-images">0</span>
+                </div>
+              </div>
+
+              <!-- Image Upload -->
+              <div id="upload-section" class="upload-section">
+                <h3>Training Images</h3>
+                <div id="upload-dropzone" class="dropzone">
+                  <span class="dropzone-icon">📁</span>
+                  <p>Drag & drop images here</p>
+                  <span class="dropzone-hint">or click to browse (5-100 images, 512×512 min)</span>
+                  <input type="file" id="upload-input" multiple accept="image/png,image/jpeg" hidden>
+                </div>
+                <div id="upload-preview" class="upload-preview"></div>
+              </div>
+
+              <!-- Training Progress -->
+              <div id="training-section" class="training-section hidden">
+                <h3>Training Progress</h3>
+                <div class="progress-bar">
+                  <div id="training-progress-fill" class="progress-fill"></div>
+                </div>
+                <p id="training-status">Preparing...</p>
+              </div>
+
+              <div class="lora-actions">
+                <button id="lora-train-btn" class="btn btn-primary">Start Training</button>
+                <button id="lora-delete-btn" class="btn btn-danger">Delete</button>
+              </div>
             </div>
           </div>
         </div>

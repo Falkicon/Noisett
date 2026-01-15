@@ -10,6 +10,7 @@ const state = {
   selectedAssetType: null,
   models: [],
   loras: [],
+  selectedLora: null,
   isCreating: false,
   isConnected: false,
 };
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupSidebarTabs();
   setupAssetTypeEditor();
   setupPromptPreview();
+  setupLoraManagement();
 
   await checkHealth();
   await loadModels();
@@ -68,13 +70,24 @@ function switchSidebarTab(tabName) {
   $('#sidebar-asset-types').classList.toggle('hidden', tabName !== 'asset-types');
   $('#sidebar-loras').classList.toggle('hidden', tabName !== 'loras');
 
-  // Update editor panel
+  // Update editor panel based on tab
   $('#editor-panel').classList.add('hidden');
   $('#lora-editor-panel').classList.add('hidden');
-  $('#editor-empty').classList.remove('hidden');
+
+  if (tabName === 'loras') {
+    // Show LoRA editor panel with empty state
+    $('#lora-editor-panel').classList.remove('hidden');
+    $('#lora-empty').classList.remove('hidden');
+    $('#lora-create-form').classList.add('hidden');
+    $('#lora-detail').classList.add('hidden');
+  } else {
+    // Show asset type empty state
+    $('#editor-empty').classList.remove('hidden');
+  }
 
   state.activeSidebarTab = tabName;
   state.selectedAssetType = null;
+  state.selectedLora = null;
   state.isCreating = false;
 }
 
@@ -148,7 +161,7 @@ function renderLoraList() {
   }
 
   list.innerHTML = state.loras.map((lora) => `
-    <div class="lora-item" data-id="${lora._id}">
+    <div class="lora-item ${state.selectedLora?._id === lora._id ? 'active' : ''}" data-id="${lora._id}">
       <div>
         <div class="lora-item-name">${escapeHtml(lora.name)}</div>
         <div class="lora-item-trigger">${escapeHtml(lora.triggerWord)}</div>
@@ -156,6 +169,11 @@ function renderLoraList() {
       <span class="status-badge ${lora.status}">${lora.status}</span>
     </div>
   `).join('');
+
+  // Add click handlers
+  $$('#lora-list .lora-item').forEach((item) => {
+    item.addEventListener('click', () => selectLora(item.dataset.id));
+  });
 }
 
 // === Populate Selectors ===
@@ -406,6 +424,257 @@ async function deleteAssetType() {
     await API.request('DELETE', `/api/asset-types/delete?id=${state.selectedAssetType._id}`);
     await loadAssetTypes();
     hideEditor();
+  } catch (error) {
+    alert('Failed to delete: ' + error.message);
+  }
+}
+
+// === LoRA Management ===
+function setupLoraManagement() {
+  // New LoRA button
+  $('#new-lora-btn').addEventListener('click', showLoraCreateForm);
+  $('#lora-create-cancel').addEventListener('click', hideLoraCreateForm);
+  $('#lora-create-submit').addEventListener('click', createLora);
+
+  // Upload dropzone
+  const dropzone = $('#upload-dropzone');
+  const input = $('#upload-input');
+
+  dropzone.addEventListener('click', () => input.click());
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', handleDrop);
+  input.addEventListener('change', (e) => handleFiles(e.target.files));
+
+  // Actions
+  $('#lora-train-btn').addEventListener('click', startTraining);
+  $('#lora-delete-btn').addEventListener('click', deleteLora);
+}
+
+function selectLora(id) {
+  state.selectedLora = state.loras.find((l) => l._id === id);
+  state.isCreating = false;
+  renderLoraList();
+  showLoraDetail();
+}
+
+function showLoraCreateForm() {
+  state.selectedLora = null;
+  state.isCreating = true;
+  renderLoraList();
+
+  $('#lora-empty').classList.add('hidden');
+  $('#lora-detail').classList.add('hidden');
+  $('#lora-create-form').classList.remove('hidden');
+
+  // Clear form
+  $('#lora-name').value = '';
+  $('#lora-trigger').value = '';
+  $('#lora-model').value = 'flux';
+  $('#lora-steps').value = '1000';
+}
+
+function hideLoraCreateForm() {
+  $('#lora-create-form').classList.add('hidden');
+  $('#lora-empty').classList.remove('hidden');
+  state.selectedLora = null;
+  state.isCreating = false;
+  renderLoraList();
+}
+
+function showLoraDetail() {
+  if (!state.selectedLora) return;
+
+  $('#lora-empty').classList.add('hidden');
+  $('#lora-create-form').classList.add('hidden');
+  $('#lora-detail').classList.remove('hidden');
+
+  const lora = state.selectedLora;
+  $('#lora-detail-name').textContent = lora.name;
+  $('#lora-detail-status').textContent = lora.status;
+  $('#lora-detail-status').className = `status-badge ${lora.status}`;
+  $('#lora-detail-trigger').textContent = lora.triggerWord;
+  $('#lora-detail-model').textContent = lora.baseModel;
+  $('#lora-detail-images').textContent = '...'; // Loading
+
+  // Show/hide sections based on status
+  const canUpload = ['created', 'uploading', 'ready_to_train'].includes(lora.status);
+  const isTraining = lora.status === 'training';
+
+  $('#upload-section').classList.toggle('hidden', !canUpload);
+  $('#training-section').classList.toggle('hidden', !isTraining);
+  $('#lora-train-btn').classList.toggle('hidden', lora.status !== 'ready_to_train');
+
+  // Fetch and display training images
+  loadTrainingImages(lora._id);
+}
+
+async function loadTrainingImages(loraId) {
+  try {
+    const response = await API.request('GET', `/api/lora/${loraId}/training-images`);
+
+    if (!response.success) {
+      console.error('Failed to load training images:', response);
+      return;
+    }
+
+    const images = response.data || [];
+    $('#lora-detail-images').textContent = images.length;
+
+    // Display images in the upload preview area
+    const preview = $('#upload-preview');
+    preview.innerHTML = '';
+
+    for (const img of images) {
+      const div = document.createElement('div');
+      div.className = 'upload-preview-item uploaded';
+
+      // Use the pre-resolved URL from the API
+      if (img.url) {
+        div.innerHTML = `<img src="${img.url}" alt="${img.filename}" title="${img.filename}">`;
+      } else {
+        div.innerHTML = `<span class="error-icon">⚠️</span>`;
+        div.title = 'Image not found';
+      }
+      preview.appendChild(div);
+    }
+
+    // Show train button if we have enough images
+    if (images.length >= 5) {
+      $('#lora-train-btn').classList.remove('hidden');
+    }
+  } catch (error) {
+    console.error('Failed to load training images:', error);
+    $('#lora-detail-images').textContent = '?';
+  }
+}
+
+async function createLora() {
+  const name = $('#lora-name').value.trim();
+  const trigger = $('#lora-trigger').value.trim();
+  const model = $('#lora-model').value;
+  const steps = parseInt($('#lora-steps').value) || 1000;
+
+  if (!name || !trigger) {
+    alert('Please fill in name and trigger word');
+    return;
+  }
+
+  try {
+    const result = await API.createLora(name, trigger, model, steps);
+
+    await loadLoras();
+    hideLoraCreateForm();
+
+    // Select the new LoRA
+    const newId = result.data?.id || result.id;
+    if (newId) {
+      selectLora(newId);
+    }
+  } catch (error) {
+    alert('Failed to create LoRA: ' + error.message);
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  $('#upload-dropzone').classList.remove('dragover');
+  const files = e.dataTransfer.files;
+  handleFiles(files);
+}
+
+async function handleFiles(files) {
+  if (!state.selectedLora) return;
+
+  const preview = $('#upload-preview');
+  preview.innerHTML = '';
+
+  let uploadedCount = 0;
+  const loraId = state.selectedLora._id;
+
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+
+    // Preview immediately
+    const div = document.createElement('div');
+    div.className = 'upload-preview-item';
+    div.innerHTML = '<div class="uploading-indicator">⏳</div>';
+    preview.appendChild(div);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      div.innerHTML = `<img src="${e.target.result}">`;
+    };
+    reader.readAsDataURL(file);
+
+    try {
+      // 1. Get upload URL from backend
+      const urlResponse = await API.getUploadUrl(loraId);
+      const uploadUrl = urlResponse.data.uploadUrl;
+
+      // 2. Upload file to Convex storage
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.status}`);
+      }
+
+      const { storageId } = await uploadResponse.json();
+
+      // 3. Register training image in Convex
+      await API.request('POST', '/api/training-images', {
+        lora_id: loraId,
+        storage_id: storageId,
+        filename: file.name,
+        file_type: file.type,
+        file_size: file.size,
+      });
+
+      uploadedCount++;
+      div.classList.add('uploaded');
+    } catch (error) {
+      console.error(`Failed to upload ${file.name}:`, error);
+      div.classList.add('upload-error');
+      div.title = error.message;
+    }
+  }
+
+  console.log(`${uploadedCount}/${files.length} files uploaded to Convex`);
+
+  // Refresh LoRA to get updated image count
+  if (uploadedCount > 0) {
+    try {
+      const updatedLora = await API.getLora(loraId);
+      if (updatedLora.success) {
+        state.selectedLora = updatedLora.data;
+        showLoraDetail();
+      }
+    } catch (e) {
+      console.error('Failed to refresh LoRA:', e);
+    }
+  }
+}
+
+async function startTraining() {
+  if (!state.selectedLora) return;
+  alert('Training would start here. Requires REPLICATE_API_TOKEN to be configured.');
+}
+
+async function deleteLora() {
+  if (!state.selectedLora) return;
+  if (!confirm(`Delete "${state.selectedLora.name}"?`)) return;
+
+  try {
+    await API.deleteLora(state.selectedLora._id);
+    state.selectedLora = null;
+    await loadLoras();
+    hideLoraCreateForm();
   } catch (error) {
     alert('Failed to delete: ' + error.message);
   }
