@@ -196,11 +196,18 @@ const DEFAULT_ASSET_TYPES = [
  */
 async function loadAssetTypes() {
   try {
-    // Try to load from API (Issue #12 will implement this)
-    const result = await API.listAssetTypes?.();
-    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
-      state.assetTypes = result.data;
+    // Try to load from API
+    const result = await API.getAssetTypes();
+    const items = result?.data || result || [];
+    // Filter to only active items if they have isActive property
+    const activeItems = Array.isArray(items)
+      ? items.filter((at) => at.isActive !== false)
+      : [];
+
+    if (activeItems.length > 0) {
+      state.assetTypes = activeItems;
     } else {
+      console.log('No active asset types from API, using defaults');
       state.assetTypes = DEFAULT_ASSET_TYPES;
     }
   } catch (error) {
@@ -500,82 +507,3 @@ function populateLoraSelector() {
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
 }
 
-// === Asset Types ===
-async function loadAssetTypes() {
-  try {
-    const result = await API.getAssetTypes();
-    const items = result.data || result || [];
-    state.assetTypes = Array.isArray(items) ? items : [];
-    populateAssetTypeSelector();
-    updatePromptBuilder();
-  } catch (error) {
-    console.error('Failed to load asset types:', error);
-    state.assetTypes = [];
-  }
-}
-
-function populateAssetTypeSelector() {
-  const select = $('#asset-type');
-  if (!select || state.assetTypes.length === 0) return;
-
-  select.innerHTML = state.assetTypes
-    .filter((at) => at.isActive)
-    .map((at) => `<option value="${at._id}">${at.name}</option>`)
-    .join('');
-
-  // Set current asset type
-  if (state.assetTypes.length > 0) {
-    state.currentAssetType = state.assetTypes.find((at) => at.isActive) || null;
-  }
-}
-
-// === Combined Prompt Builder (Issue #11) ===
-function setupPromptBuilder() {
-  const assetTypeSelect = $('#asset-type');
-  const promptInput = $('#prompt');
-
-  if (assetTypeSelect) {
-    assetTypeSelect.addEventListener('change', () => {
-      const selectedId = assetTypeSelect.value;
-      state.currentAssetType = state.assetTypes.find((at) => at._id === selectedId) || null;
-      updatePromptBuilder();
-    });
-  }
-
-  if (promptInput) {
-    promptInput.addEventListener('input', updateCombinedPromptPreview);
-  }
-}
-
-function updatePromptBuilder() {
-  const prePromptLabel = $('#pre-prompt-label');
-  const postPromptLabel = $('#post-prompt-label');
-
-  if (state.currentAssetType) {
-    if (prePromptLabel) {
-      prePromptLabel.textContent = state.currentAssetType.prePrompt || '';
-    }
-    if (postPromptLabel) {
-      postPromptLabel.textContent = state.currentAssetType.postPrompt || '';
-    }
-  } else {
-    if (prePromptLabel) prePromptLabel.textContent = '';
-    if (postPromptLabel) postPromptLabel.textContent = '';
-  }
-
-  updateCombinedPromptPreview();
-}
-
-function updateCombinedPromptPreview() {
-  const preview = $('#combined-prompt-preview');
-  const userPrompt = $('#prompt')?.value?.trim() || '';
-
-  if (!preview) return;
-
-  const pre = state.currentAssetType?.prePrompt || '';
-  const post = state.currentAssetType?.postPrompt || '';
-
-  // Build combined prompt following spec: "{pre} {user} {post}".strip()
-  const parts = [pre, userPrompt, post].filter((p) => p);
-  preview.textContent = parts.join(' ');
-}

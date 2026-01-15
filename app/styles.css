@@ -1080,8 +1080,18 @@ code {
   white-space: pre-wrap;
 }
 
-.prompt-label:empty {
-  display: none;
+.prompt-label:empty::before {
+  content: '(No prefix/suffix for this asset type)';
+  font-style: italic;
+  opacity: 0.5;
+}
+
+.prompt-label-pre:empty::before {
+  content: '(No prefix)';
+}
+
+.prompt-label-post:empty::before {
+  content: '(No suffix)';
 }
 
 .prompt-label-pre {
