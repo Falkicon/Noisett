@@ -705,20 +705,57 @@ class ReplicateGenerator(ImageGenerator):
             print(f"[REPLICATE+REF] Reference images: {len(reference_urls)}")
             print(f"[REPLICATE+REF] Prompt: {enhanced_prompt[:50]}...")
 
-            # Build input params - reference images are passed via `input_images`
-            input_params = {
-                "prompt": enhanced_prompt,
-                "input_images": reference_urls,  # Reference images for style transfer
-                "go_fast": True,
-                "guidance": 3.5,
-                "megapixels": "1",
-                "num_outputs": 1,
-                "aspect_ratio": "1:1",
-                "output_format": "webp",
-                "output_quality": output_quality,
-                "num_inference_steps": num_steps,
-                "seed": seed,
-            }
+            # Build model-specific input params
+            model_lower = replicate_model.lower()
+
+            # Nano Banana Pro - uses image_input for reference images
+            if "nano-banana" in model_lower:
+                resolution_map = {"draft": "1K", "standard": "2K", "high": "4K"}
+                input_params = {
+                    "prompt": enhanced_prompt,
+                    "image_input": reference_urls,  # Nano Banana Pro uses image_input
+                    "aspect_ratio": "1:1",
+                    "resolution": resolution_map.get(quality.value, "2K"),
+                    "output_format": "png",  # Only jpg or png supported
+                }
+            # FLUX.2 [max] - uses input_images
+            elif "flux-2" in model_lower or "flux.2" in model_lower:
+                resolution_map = {"draft": "1 MP", "standard": "2 MP", "high": "4 MP"}
+                input_params = {
+                    "prompt": enhanced_prompt,
+                    "input_images": reference_urls,
+                    "aspect_ratio": "1:1",
+                    "resolution": resolution_map.get(quality.value, "2 MP"),
+                    "output_format": "png",
+                    "output_quality": output_quality,
+                    "seed": seed,
+                }
+            # Seedream - uses image_input
+            elif "seedream" in model_lower or "bytedance" in model_lower:
+                size_map = {"draft": "2K", "standard": "2K", "high": "4K"}
+                input_params = {
+                    "prompt": enhanced_prompt,
+                    "image_input": reference_urls,
+                    "aspect_ratio": "1:1",
+                    "size": size_map.get(quality.value, "2K"),
+                }
+            # Default: FLUX-style parameters
+            else:
+                input_params = {
+                    "prompt": enhanced_prompt,
+                    "input_images": reference_urls,
+                    "go_fast": True,
+                    "guidance": 3.5,
+                    "megapixels": "1",
+                    "num_outputs": 1,
+                    "aspect_ratio": "1:1",
+                    "output_format": "png",
+                    "output_quality": output_quality,
+                    "num_inference_steps": num_steps,
+                    "seed": seed,
+                }
+
+            print(f"[REPLICATE+REF] Input params: {input_params}")
 
             # Run prediction
             output = await replicate.async_run(
