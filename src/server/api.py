@@ -48,6 +48,7 @@ class GenerateRequest(BaseModel):
     quality: str = Field(default="standard", description="Quality preset")
     count: int = Field(default=1, ge=1, le=4, description="Number of variations")
     lora: str | None = Field(default=None, description="LoRA ID to use for styled generation")
+    asset_type_id: str | None = Field(default=None, description="Convex Asset Type ID")
 
 
 class CancelRequest(BaseModel):
@@ -73,7 +74,9 @@ async def process_job(job_id: str):
     
     debug_log(f"[PROCESS_JOB] Starting job {job_id}")
     debug_log(f"[PROCESS_JOB] ML_BACKEND: {os.environ.get('ML_BACKEND', 'mock')}")
-    debug_log(f"[PROCESS_JOB] REPLICATE_API_TOKEN set: {bool(os.environ.get('REPLICATE_API_TOKEN'))}")
+    # Check both variable names for flexibility
+    api_key = os.environ.get('REPLICATE_API_KEY') or os.environ.get('REPLICATE_API_TOKEN')
+    debug_log(f"[PROCESS_JOB] REPLICATE_API_KEY set: {bool(api_key)}")
     
     # Get the job
     job = get_job(job_id)
@@ -89,8 +92,28 @@ async def process_job(job_id: str):
     update_job(job)
     
     try:
+        # Check if model supports LoRA before using LoRA path (v2)
+        model_supports_lora = True
+        debug_log(f"[PROCESS_JOB] job.model = '{job.model}'")
+        debug_log(f"[PROCESS_JOB] job.lora_id = '{job.lora_id}'")
+
+        if job.model:
+            from src.ml.registry import list_models
+            models = list_models()
+            model_config = models.get(job.model)
+            debug_log(f"[PROCESS_JOB] model_config found: {model_config is not None}")
+            if model_config:
+                capabilities = model_config.get("capabilities", {})
+                model_supports_lora = capabilities.get("supportsLora", True)
+                debug_log(f"[PROCESS_JOB] Model {job.model} supportsLora: {model_supports_lora}")
+        else:
+            debug_log(f"[PROCESS_JOB] job.model is empty/None, defaulting model_supports_lora=True")
+
+        debug_log(f"[PROCESS_JOB] Final check: lora_id={bool(job.lora_id)}, model_supports_lora={model_supports_lora}")
+
         # Handle LoRA generation with Fireworks/Replicate fallback
-        if job.lora_id:
+        # Only use LoRA path if both lora_id is set AND model supports LoRA
+        if job.lora_id and model_supports_lora:
             # Get LoRA information from Convex
             from src.core.convex_client import get_convex_client
 
@@ -167,7 +190,35 @@ async def process_job(job_id: str):
                 raise ValueError("LoRA is not ready for inference - no Fireworks deployment or Replicate URL available")
 
         else:
-            # Regular generation without LoRA
+            # Check if asset type has reference images
+            reference_urls = []
+            model_config = None
+
+            # Try to get asset type reference images from Convex
+            if hasattr(job, 'asset_type_id') and job.asset_type_id:
+                try:
+                    from src.core.convex_client import get_convex_client
+                    convex = get_convex_client()
+                    asset_type_data = await convex.get_asset_type(job.asset_type_id)
+                    if asset_type_data and asset_type_data.get("referenceImages"):
+                        # Get model config to check if it supports reference images
+                        from src.ml.registry import list_models
+                        models = list_models()
+                        model_config = models.get(asset_type_data.get("model", ""))
+
+                        if model_config and model_config.get("capabilities", {}).get("maxReferenceImages", 0) > 0:
+                            # Fetch URLs for reference images
+                            for storage_id in asset_type_data["referenceImages"]:
+                                try:
+                                    url = await convex.get_storage_url(storage_id)
+                                    if url:
+                                        reference_urls.append(url)
+                                except Exception as e:
+                                    debug_log(f"[PROCESS_JOB] Failed to get reference image URL: {e}")
+                            debug_log(f"[PROCESS_JOB] Found {len(reference_urls)} reference images")
+                except Exception as e:
+                    debug_log(f"[PROCESS_JOB] Failed to get asset type for reference images: {e}")
+
             # Get the appropriate generator based on ML_BACKEND env var
             backend = os.environ.get("ML_BACKEND", "mock")
             print(f"[DEBUG] ML_BACKEND selected: '{backend}'")
@@ -192,14 +243,27 @@ async def process_job(job_id: str):
             job.progress = 0.3
             update_job(job)
 
-            # Generate images
-            images = await generator.generate(
-                prompt=job.prompt,
-                asset_type=job.asset_type,
-                model=job.model,
-                quality=job.quality,
-                count=job.count,
-            )
+            # Generate images - with reference images if available
+            if reference_urls and hasattr(generator, 'generate_with_references'):
+                debug_log(f"[PROCESS_JOB] Using generate_with_references with {len(reference_urls)} images")
+                images = await generator.generate_with_references(
+                    prompt=job.prompt,
+                    asset_type=job.asset_type,
+                    model=job.model,
+                    quality=job.quality,
+                    count=job.count,
+                    reference_urls=reference_urls,
+                    model_config=model_config,
+                )
+            else:
+                # Regular generation without reference images
+                images = await generator.generate(
+                    prompt=job.prompt,
+                    asset_type=job.asset_type,
+                    model=job.model,
+                    quality=job.quality,
+                    count=job.count,
+                )
         
         # Update job with results
         job.status = JobStatus.COMPLETE
@@ -221,10 +285,10 @@ async def process_job(job_id: str):
 async def lifespan(app: FastAPI):
     """App lifespan handler for startup/shutdown."""
     # Startup
-    print("🎨 Noisett API starting...")
+    print("Noisett API starting...")
     yield
     # Shutdown
-    print("🎨 Noisett API shutting down...")
+    print("Noisett API shutting down...")
 
 
 app = FastAPI(
@@ -257,28 +321,36 @@ app.add_middleware(
 # --- Health Check ---
 
 
+@app.get("/debug/static")
+async def debug_static():
+    """Debug endpoint to check static file mounting."""
+    import os
+    app_dir = os.path.join(os.path.dirname(__file__), "..", "..", "app")
+    app_dir = os.path.abspath(app_dir)
+    files = os.listdir(app_dir) if os.path.exists(app_dir) else []
+    return {
+        "app_dir": app_dir,
+        "exists": os.path.exists(app_dir),
+        "files": files,
+        "static_mounted": _static_mounted,
+        "routes": [r.path for r in app.routes],
+    }
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Container Apps monitoring.
-    
-    Returns system status including GPU availability.
-    Used by Azure Container Apps for liveness/readiness probes.
+
+    Returns system status. Used by Azure Container Apps for liveness/readiness probes.
+    Note: GPU check removed - we use Fireworks.ai cloud API for inference.
     """
     import os
-    
-    # Check GPU availability (only if torch is installed)
-    gpu_available = False
-    try:
-        import torch
-        gpu_available = torch.cuda.is_available()
-    except ImportError:
-        pass
-    
+
     return {
-        "status": "healthy" if gpu_available else "degraded",
+        "status": "healthy",
         "service": "noisett-api",
         "version": "0.6.0",
-        "gpu_available": gpu_available,
+        "ml_backend": os.getenv("ML_BACKEND", "mock"),
         "environment": os.getenv("NOISETT_ENV", "development"),
     }
 
@@ -353,7 +425,7 @@ async def test_replicate():
 @app.post("/api/generate")
 async def generate_asset(request: GenerateRequest, background_tasks: BackgroundTasks):
     """Generate brand-aligned images from a text prompt.
-    
+
     Creates a generation job and starts processing in background.
     Poll /api/jobs/{id} for completion.
     """
@@ -363,10 +435,11 @@ async def generate_asset(request: GenerateRequest, background_tasks: BackgroundT
         input_data = AssetGenerateInput(
             prompt=request.prompt,
             asset_type=AssetType(request.asset_type),
-            model=ModelId(request.model),
+            model=request.model,  # Pass model string directly (supports models.json IDs)
             quality=QualityPreset(request.quality),
             count=request.count,
             lora=request.lora,
+            asset_type_id=request.asset_type_id,
         )
         result = await generate(input_data)
         
@@ -381,11 +454,57 @@ async def generate_asset(request: GenerateRequest, background_tasks: BackgroundT
 
 @app.get("/api/asset-types")
 async def get_asset_types():
-    """List available asset types and their configurations."""
-    from src.commands.asset import types
+    """List available asset types from Convex."""
+    try:
+        from src.core.convex_client import get_convex_client
+        convex = get_convex_client()
+        asset_types = await convex._make_request("GET", "/api/asset-types/list")
+        return {"success": True, "data": asset_types}
+    except Exception as e:
+        logging.error(f"Failed to list asset types: {e}")
+        return {"success": False, "data": [], "error": {"message": str(e)}}
 
-    result = await types()
-    return result.model_dump(exclude_none=True)
+
+@app.post("/api/asset-types/update")
+async def update_asset_type(request: Request):
+    """Update an asset type in Convex."""
+    try:
+        from src.core.convex_client import get_convex_client
+        data = await request.json()
+        convex = get_convex_client()
+        await convex._make_request("POST", "/api/asset-types/update", data=data)
+        return {"success": True}
+    except Exception as e:
+        logging.error(f"Failed to update asset type: {e}")
+        return {"success": False, "error": {"message": str(e)}}
+
+
+@app.post("/api/asset-types/create")
+async def create_asset_type(request: Request):
+    """Create a new asset type in Convex."""
+    try:
+        from src.core.convex_client import get_convex_client
+        data = await request.json()
+        data["createdAt"] = int(time.time() * 1000)
+        convex = get_convex_client()
+        result = await convex._make_request("POST", "/api/asset-types/create", data=data)
+        return {"success": True, "data": result}
+    except Exception as e:
+        logging.error(f"Failed to create asset type: {e}")
+        return {"success": False, "error": {"message": str(e)}}
+
+
+@app.delete("/api/asset-types/delete")
+async def delete_asset_type(id: str):
+    """Delete (deactivate) an asset type in Convex."""
+    try:
+        from src.core.convex_client import get_convex_client
+        convex = get_convex_client()
+        await convex._make_request("DELETE", "/api/asset-types/delete", params={"id": id})
+        return {"success": True}
+    except Exception as e:
+        logging.error(f"Failed to delete asset type: {e}")
+        return {"success": False, "error": {"message": str(e)}}
 
 
 # --- Job Endpoints ---
@@ -1205,11 +1324,16 @@ def extract_progress_from_logs(logs: str) -> dict:
 def setup_static_files():
     """Mount static files for web UI if directory exists."""
     import os
-    
-    web_dir = os.path.join(os.path.dirname(__file__), "..", "..", "web")
-    if os.path.exists(web_dir):
-        app.mount("/", StaticFiles(directory=web_dir, html=True), name="static")
+
+    app_dir = os.path.join(os.path.dirname(__file__), "..", "..", "app")
+    app_dir = os.path.abspath(app_dir)
+    print(f"[STATIC] Looking for app directory at: {app_dir}")
+    print(f"[STATIC] Directory exists: {os.path.exists(app_dir)}")
+    if os.path.exists(app_dir):
+        print(f"[STATIC] Mounting static files from: {app_dir}")
+        app.mount("/", StaticFiles(directory=app_dir, html=True), name="static")
         return True
+    print(f"[STATIC] Directory not found, static files not mounted")
     return False
 
 

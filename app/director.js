@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAssetTypeEditor();
   setupPromptPreview();
   setupLoraManagement();
+  setupReferenceImages();
 
   await checkHealth();
   await loadModels();
@@ -71,20 +72,22 @@ function switchSidebarTab(tabName) {
   $$('.sidebar-tab').forEach((t) => t.classList.remove('active'));
   $(`.sidebar-tab[data-sidebar-tab="${tabName}"]`).classList.add('active');
 
-  // Update content
+  // Update sidebar content visibility
   $('#sidebar-asset-types').classList.toggle('hidden', tabName !== 'asset-types');
   $('#sidebar-loras').classList.toggle('hidden', tabName !== 'loras');
 
-  // Update editor panel based on tab
+  // Hide all editor panels and empty states first
   $('#editor-panel').classList.add('hidden');
+  $('#editor-empty').classList.add('hidden');
   $('#lora-editor-panel').classList.add('hidden');
+  $('#lora-empty').classList.add('hidden');
+  $('#lora-create-form').classList.add('hidden');
+  $('#lora-detail').classList.add('hidden');
 
   if (tabName === 'loras') {
     // Show LoRA editor panel with empty state
     $('#lora-editor-panel').classList.remove('hidden');
     $('#lora-empty').classList.remove('hidden');
-    $('#lora-create-form').classList.add('hidden');
-    $('#lora-detail').classList.add('hidden');
   } else {
     // Show asset type empty state
     $('#editor-empty').classList.remove('hidden');
@@ -99,8 +102,12 @@ function switchSidebarTab(tabName) {
 // === Load Data ===
 async function loadModels() {
   const result = await API.request('GET', '/api/models/list');
-  if (result.success) {
-    state.models = result.data || [];
+  if (result.success && result.data) {
+    // API returns object with model IDs as keys, convert to array
+    state.models = Object.entries(result.data).map(([id, model]) => ({
+      id,
+      ...model,
+    }));
   } else {
     console.error('Failed to load models:', result.error?.message);
     state.models = [];
@@ -122,9 +129,10 @@ async function loadLoras() {
 }
 
 async function loadAssetTypes() {
-  const result = await API.request('GET', '/api/asset-types/list');
-  if (result.success) {
-    state.assetTypes = result.data || [];
+  const result = await API.request('GET', '/api/asset-types');
+  if (result.success && result.data) {
+    // API returns array directly from Convex
+    state.assetTypes = Array.isArray(result.data) ? result.data : [];
   } else {
     console.error('Failed to load asset types:', result.error?.message);
     state.assetTypes = [];
@@ -141,11 +149,12 @@ function renderAssetTypeList() {
     return;
   }
 
+  // Convex returns asset types with '_id' field
   list.innerHTML = state.assetTypes.map((at) => `
     <div class="asset-type-item ${state.selectedAssetType?._id === at._id ? 'active' : ''}" data-id="${at._id}">
       <div class="asset-type-item-info">
         <div class="asset-type-item-name">${escapeHtml(at.name)}</div>
-        <div class="asset-type-item-model">${escapeHtml(at.model || 'No model')}</div>
+        <div class="asset-type-item-model">${escapeHtml(at.description || '')}</div>
       </div>
       <span class="status-badge ${at.isActive ? 'status-active' : 'status-inactive'}">${at.isActive ? 'Active' : 'Inactive'}</span>
     </div>
@@ -295,6 +304,25 @@ function updateLoraVisibility() {
     loraGroup.style.display = 'none';
     $('#asset-type-lora').value = '';
   }
+
+  // Update reference images visibility
+  updateReferenceImagesVisibility();
+}
+
+function updateReferenceImagesVisibility() {
+  const modelId = $('#asset-type-model').value;
+  const model = state.models.find((m) => m.id === modelId);
+  const section = $('#reference-images-section');
+  const maxImages = model?.capabilities?.maxReferenceImages || 0;
+
+  if (maxImages > 0) {
+    section.classList.remove('hidden');
+    $('#max-reference-images').textContent = maxImages;
+    $('#reference-images-max').textContent = maxImages;
+    renderReferenceImages();
+  } else {
+    section.classList.add('hidden');
+  }
 }
 
 function getModelSettings() {
@@ -341,7 +369,7 @@ function showEditor() {
 
   const at = state.selectedAssetType;
 
-  // Populate form
+  // Populate form from Convex asset type
   $('#asset-type-name').value = at?.name || '';
   $('#asset-type-description').value = at?.description || '';
   $('#asset-type-pre-prompt').value = at?.prePrompt || '';
@@ -356,7 +384,8 @@ function showEditor() {
   updateLoraVisibility();
   updatePromptPreview();
 
-  // Show/hide delete button
+  // All Convex asset types are editable - show save, show delete when editing
+  $('#save-asset-type-btn').classList.remove('hidden');
   $('#delete-asset-type-btn').classList.toggle('hidden', state.isCreating);
 }
 
@@ -745,6 +774,133 @@ async function performDeleteLora() {
   } else {
     showError('Failed to delete', result.error?.message || 'Unknown error');
   }
+}
+
+// === Reference Images Management ===
+function setupReferenceImages() {
+  const dropzone = $('#reference-dropzone');
+  const input = $('#reference-input');
+
+  dropzone.addEventListener('click', () => input.click());
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', handleReferenceDrop);
+  input.addEventListener('change', (e) => handleReferenceFiles(e.target.files));
+}
+
+function handleReferenceDrop(e) {
+  e.preventDefault();
+  $('#reference-dropzone').classList.remove('dragover');
+  handleReferenceFiles(e.dataTransfer.files);
+}
+
+async function handleReferenceFiles(files) {
+  if (!state.selectedAssetType) return;
+
+  const modelId = $('#asset-type-model').value;
+  const model = state.models.find((m) => m.id === modelId);
+  const maxImages = model?.capabilities?.maxReferenceImages || 0;
+  const currentCount = state.selectedAssetType.referenceImages?.length || 0;
+  const remainingSlots = maxImages - currentCount;
+
+  if (remainingSlots <= 0) {
+    showError('Limit Reached', `Maximum ${maxImages} reference images allowed`);
+    return;
+  }
+
+  const filesToUpload = Array.from(files).slice(0, remainingSlots);
+
+  for (const file of filesToUpload) {
+    if (!file.type.startsWith('image/')) continue;
+    await uploadReferenceImage(file);
+  }
+
+  // Refresh asset type to get updated reference images
+  await refreshAssetType();
+}
+
+async function uploadReferenceImage(file) {
+  // 1. Get upload URL from Convex
+  const urlResponse = await ConvexAPI.generateUploadUrl();
+  if (!urlResponse.success) {
+    console.error('Failed to get upload URL:', urlResponse.error?.message);
+    return;
+  }
+
+  // 2. Upload to Convex storage
+  const uploadResult = await API.uploadImage(urlResponse.data.uploadUrl, file);
+  if (!uploadResult.success) {
+    console.error('Failed to upload image:', uploadResult.error?.message);
+    return;
+  }
+
+  // 3. Add to asset type via Convex
+  const addResult = await ConvexAPI.request('POST', '/api/asset-types/add-reference-image', {
+    id: state.selectedAssetType._id,
+    storageId: uploadResult.data.storageId,
+  });
+
+  if (!addResult.success) {
+    console.error('Failed to add reference image:', addResult.error?.message);
+  }
+}
+
+async function removeReferenceImage(storageId) {
+  if (!state.selectedAssetType) return;
+
+  const result = await ConvexAPI.request('POST', '/api/asset-types/remove-reference-image', {
+    id: state.selectedAssetType._id,
+    storageId: storageId,
+  });
+
+  if (result.success) {
+    await refreshAssetType();
+  } else {
+    showError('Failed to remove', result.error?.message || 'Unknown error');
+  }
+}
+
+async function refreshAssetType() {
+  if (!state.selectedAssetType) return;
+
+  const result = await ConvexAPI.getAssetType(state.selectedAssetType._id);
+  if (result.success) {
+    state.selectedAssetType = result.data;
+    renderReferenceImages();
+    // Also update the list
+    await loadAssetTypes();
+  }
+}
+
+async function renderReferenceImages() {
+  const preview = $('#reference-preview');
+  const images = state.selectedAssetType?.referenceImages || [];
+
+  $('#reference-images-current').textContent = images.length;
+
+  if (images.length === 0) {
+    preview.innerHTML = '';
+    return;
+  }
+
+  // Fetch URLs for all storage IDs from Convex
+  const imageElements = [];
+  for (const storageId of images) {
+    const urlResult = await ConvexAPI.request('GET', `/api/storage/get-url?storageId=${storageId}`);
+    if (urlResult.success && urlResult.data.url) {
+      imageElements.push(`
+        <div class="upload-preview-item uploaded" data-storage-id="${storageId}">
+          <img src="${urlResult.data.url}" alt="Reference image">
+          <button class="btn-remove-ref" onclick="removeReferenceImage('${storageId}')" title="Remove">×</button>
+        </div>
+      `);
+    }
+  }
+
+  preview.innerHTML = imageElements.join('');
 }
 
 // === Utilities ===

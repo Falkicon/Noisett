@@ -43,9 +43,9 @@ class AssetGenerateInput(BaseModel):
         default=AssetType.PRODUCT,
         description="Type of asset to generate",
     )
-    model: ModelId = Field(
-        default=ModelId.HIDREAM,
-        description="Model to use for generation",
+    model: str = Field(
+        default="hidream",
+        description="Model ID to use for generation (e.g., 'hidream', 'replicate:nano-banana-pro')",
     )
     quality: QualityPreset = Field(
         default=QualityPreset.STANDARD,
@@ -60,6 +60,10 @@ class AssetGenerateInput(BaseModel):
     lora: str | None = Field(
         default=None,
         description="LoRA ID to use for styled generation (Fireworks inference)",
+    )
+    asset_type_id: str | None = Field(
+        default=None,
+        description="Convex Asset Type ID (for reference images)",
     )
 
 
@@ -117,13 +121,14 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
                     suggestion="Use lora.list to see available LoRAs",
                 )
 
-            # Check if LoRA is deployed and ready for use
+            # Check if LoRA is ready for use
+            # Accept "completed" (Replicate training done) or "deployed" (Fireworks deployment done)
             lora_status = convex_lora["status"]
-            if lora_status != "deployed":
+            if lora_status not in ("completed", "deployed"):
                 return error(
                     code=ErrorCode.LORA_NOT_READY,
-                    message=f"LoRA is not deployed (status: {lora_status})",
-                    suggestion="Wait for deployment to complete or use lora.deploy to retry",
+                    message=f"LoRA is not ready (status: {lora_status})",
+                    suggestion="Wait for training to complete",
                 )
 
             # Check if LoRA is active
@@ -134,19 +139,24 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
                     suggestion="Activate the LoRA first: lora.activate",
                 )
 
+            # Get LoRA weights URL - either Fireworks model ID or Replicate loraUrl
+            fireworks_model_id = convex_lora.get("fireworksModelId")
+            lora_url = convex_lora.get("loraUrl")
+
             lora_info = {
                 "id": convex_lora["_id"],
                 "name": convex_lora["name"],
                 "trigger_word": convex_lora["triggerWord"],
-                "fireworks_model_id": convex_lora.get("fireworksModelId"),
+                "fireworks_model_id": fireworks_model_id,
+                "lora_url": lora_url,
             }
 
-            # Ensure Fireworks model ID is available
-            if not lora_info["fireworks_model_id"]:
+            # Ensure either Fireworks model ID or LoRA URL is available
+            if not fireworks_model_id and not lora_url:
                 return error(
                     code=ErrorCode.LORA_NOT_READY,
-                    message="LoRA deployment incomplete - no Fireworks model ID",
-                    suggestion="Use lora.deploy to retry deployment",
+                    message="LoRA has no weights URL - training may have failed",
+                    suggestion="Check training status or retrain the LoRA",
                 )
 
         except Exception as e:
@@ -157,12 +167,41 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
             )
 
     # Validate model availability
-    model_info = MODEL_CONFIGS.get(input.model)
-    if not model_info or not model_info.available:
+    # First check models.json (dynamic models like replicate:nano-banana-pro)
+    from src.ml.registry import list_models
+    dynamic_models = list_models()
+    model_info = None
+    model_name = input.model
+
+    print(f"[DEBUG] Validating model: '{input.model}'")
+    print(f"[DEBUG] Available models: {list(dynamic_models.keys())}")
+    print(f"[DEBUG] Model in dynamic_models: {input.model in dynamic_models}")
+
+    if input.model in dynamic_models:
+        # Model found in models.json - it's available
+        model_info = dynamic_models[input.model]
+        model_name = model_info.get("name", input.model)
+    else:
+        # Fall back to MODEL_CONFIGS for legacy models (hidream, flux, sd35)
+        try:
+            model_id = ModelId(input.model)
+            model_info = MODEL_CONFIGS.get(model_id)
+        except ValueError:
+            model_info = None
+
+    if not model_info:
         template = get_error_template(ErrorCode.MODEL_UNAVAILABLE)
         return error(
             code=ErrorCode.MODEL_UNAVAILABLE,
-            message=f"Model '{input.model.value}' is not currently available",
+            message=f"Model '{input.model}' is not currently available",
+            suggestion="Try 'hidream' which is commercially licensed and available",
+        )
+
+    # Check if legacy model is available
+    if hasattr(model_info, 'available') and not model_info.available:
+        return error(
+            code=ErrorCode.MODEL_UNAVAILABLE,
+            message=f"Model '{input.model}' is not currently available",
             suggestion="Try 'hidream' which is commercially licensed and available",
         )
 
@@ -182,6 +221,7 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
         images=[],
         created_at=now,
         lora_id=input.lora if lora_info else None,  # Store LoRA ID in job
+        asset_type_id=input.asset_type_id,  # Store Asset Type ID for reference images
     )
 
     # Store job
@@ -193,7 +233,8 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
 
     # Build warnings
     warnings: list[Warning] = []
-    if not model_info.commercial_ok:
+    # Check commercial_ok for legacy models (Model object has attribute)
+    if hasattr(model_info, 'commercial_ok') and not model_info.commercial_ok:
         warnings.append(
             Warning(
                 code="NON_COMMERCIAL",
@@ -227,7 +268,9 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
     output = AssetGenerateOutput(job=job, estimated_seconds=estimated_seconds)
 
     # Build reasoning message
-    reasoning_parts = [f"Started generation of {input.count} {input.asset_type.value} images using {model_info.name}"]
+    # Use model_name (set earlier based on model type)
+    display_name = model_name if isinstance(model_info, dict) else model_info.name
+    reasoning_parts = [f"Started generation of {input.count} {input.asset_type.value} images using {display_name}"]
     if lora_info:
         reasoning_parts.append(f"with LoRA '{lora_info['name']}'")
 
