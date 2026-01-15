@@ -530,4 +530,52 @@ http.route({
   }),
 });
 
+// Upload image from external URL to Convex storage
+http.route({
+  path: "/api/storage/upload-from-url",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/storage/upload-from-url",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const { url } = body;
+    
+    if (!url) {
+      return jsonResponse({ error: "url parameter required" }, 400);
+    }
+
+    try {
+      // Fetch the image from the external URL
+      const response = await fetch(url);
+      if (!response.ok) {
+        return jsonResponse({ 
+          error: `Failed to fetch image: ${response.status}` 
+        }, 400);
+      }
+
+      // Get the image blob
+      const blob = await response.blob();
+      
+      // Store in Convex storage
+      const storageId = await ctx.storage.store(blob);
+      
+      // Get the permanent URL
+      const permanentUrl = await ctx.storage.getUrl(storageId);
+
+      return jsonResponse({ 
+        storageId, 
+        url: permanentUrl 
+      });
+    } catch (error) {
+      return jsonResponse({ 
+        error: `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      }, 500);
+    }
+  }),
+});
+
 export default http;// Force redeploy Wed, Jan 14, 2026 11:22:37 PM

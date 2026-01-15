@@ -696,23 +696,45 @@ async function finalizeGeneration(images) {
 }
 
 async function saveGenerationToHistory(images) {
+  // Upload images to Convex storage for permanent URLs
+  const processedImages = await Promise.all(
+    images.map(async (img) => {
+      const imageData = {
+        url: img.url,
+        width: img.width || 1024,
+        height: img.height || 1024,
+        seed: img.seed,
+      };
+
+      // Try to upload to Convex storage for permanent URL
+      try {
+        const uploadResult = await ConvexAPI.uploadFromUrl(img.url);
+        if (uploadResult.success && uploadResult.data?.storageId) {
+          imageData.storageId = uploadResult.data.storageId;
+          // Use the permanent storage URL
+          imageData.url = uploadResult.data.url || img.url;
+        }
+      } catch (err) {
+        console.warn('[DEBUG] Failed to upload image to storage:', err);
+        // Fall back to original URL (may expire)
+      }
+
+      return imageData;
+    })
+  );
+
   const generationData = {
     assetTypeId: state.pendingGeneration.assetTypeId,
     userPrompt: state.pendingGeneration.userPrompt,
     combinedPrompt: state.pendingGeneration.combinedPrompt,
-    images: images.map((img) => ({
-      url: img.url,
-      width: img.width || 1024,
-      height: img.height || 1024,
-      seed: img.seed,
-    })),
+    images: processedImages,
     isFavorite: false,
     createdAt: Date.now(),
   };
   console.log('[DEBUG] Saving generation to Convex:', generationData);
   const result = await API.createGeneration(generationData);
   if (result.success) {
-    console.log('[DEBUG] Generation saved successfully');
+    console.log('[DEBUG] Generation saved successfully with storage IDs');
   } else {
     // Don't show error to user - generation was successful, just history save failed
     console.error('[DEBUG] Failed to save generation to history:', result.error?.message);

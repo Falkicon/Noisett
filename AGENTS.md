@@ -79,6 +79,29 @@ Noisett is an internal AI image generation tool that creates on-brand illustrati
 
 ---
 
+## Local Development
+
+Start all servers with a single command:
+
+```bash
+npm run dev
+```
+
+This runs:
+- **Convex** – Real-time backend (syncs functions on save)
+- **Python API** – FastAPI server at http://localhost:8000 (serves web UI)
+
+### Individual Servers
+
+```bash
+npm run dev:convex   # Convex only
+npm run dev:api      # Python API only (port 8000)
+```
+
+> **First time?** Run `npm install` to install dependencies.
+
+---
+
 ## Quick Start
 
 ### CLI (Primary Development Interface)

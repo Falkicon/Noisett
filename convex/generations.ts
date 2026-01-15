@@ -9,6 +9,7 @@ export const create = internalMutation({
     combinedPrompt: v.string(),
     images: v.array(v.object({
       url: v.string(),
+      storageId: v.optional(v.id("_storage")),  // Permanent Convex storage
       width: v.number(),
       height: v.number(),
       seed: v.optional(v.number()),

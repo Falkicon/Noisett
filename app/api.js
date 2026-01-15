@@ -329,4 +329,13 @@ const ConvexAPI = {
   async needsSeedAssetTypes() {
     return this.request('GET', '/api/asset-types/needs-seed');
   },
+
+  // === Storage ===
+  async uploadFromUrl(imageUrl) {
+    return this.request('POST', '/api/storage/upload-from-url', { url: imageUrl });
+  },
+
+  async getStorageUrl(storageId) {
+    return this.request('GET', `/api/storage/get-url?storageId=${storageId}`);
+  },
 };
