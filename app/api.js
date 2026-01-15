@@ -60,11 +60,32 @@ const API = {
   },
 
   async getAssetTypes() {
-    return this.request('GET', '/api/asset-types');
+    return ConvexAPI.listAssetTypes();
+  },
+
+  async getAssetType(id) {
+    return ConvexAPI.getAssetType(id);
   },
 
   async getModels() {
     return this.request('GET', '/api/models');
+  },
+
+  // === Generations (Convex) ===
+  async createGeneration(data) {
+    return ConvexAPI.createGeneration(data);
+  },
+
+  async listGenerations(favorite = undefined) {
+    return ConvexAPI.listGenerations(favorite);
+  },
+
+  async toggleGenerationFavorite(id) {
+    return ConvexAPI.toggleFavorite(id);
+  },
+
+  async deleteGeneration(id) {
+    return ConvexAPI.deleteGeneration(id);
   },
 
   // === LoRAs ===
@@ -175,5 +196,40 @@ const ConvexAPI = {
 
   async generateUploadUrl() {
     return this.request('POST', '/api/storage/generate-upload-url');
+  },
+
+  // === Generations (Issue #22) ===
+  async listGenerations(favorite = undefined) {
+    let path = '/api/generations/list';
+    if (favorite !== undefined) {
+      path += `?favorite=${favorite}`;
+    }
+    return this.request('GET', path);
+  },
+
+  async toggleFavorite(id) {
+    return this.request('POST', '/api/generations/toggle-favorite', { id });
+  },
+
+  async deleteGeneration(id) {
+    return this.request('DELETE', `/api/generations/delete?id=${id}`);
+  },
+
+  async getGeneration(id) {
+    return this.request('GET', `/api/generations/get?id=${id}`);
+  },
+
+  async createGeneration(data) {
+    return this.request('POST', '/api/generations/create', data);
+  },
+
+  // === Asset Types ===
+  async listAssetTypes(activeOnly = true) {
+    const path = activeOnly ? '/api/asset-types/list?activeOnly=true' : '/api/asset-types/list';
+    return this.request('GET', path);
+  },
+
+  async getAssetType(id) {
+    return this.request('GET', `/api/asset-types/get?id=${id}`);
   },
 };
