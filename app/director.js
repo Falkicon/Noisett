@@ -456,8 +456,8 @@ function collectAssetTypeFormData(name) {
     postPrompt: $('#asset-type-post-prompt').value.trim(),
     model: modelId,
     modelSettings: getModelSettings(),
-    // Clear loraId if model doesn't support LoRA
-    loraId: supportsLora ? ($('#asset-type-lora').value || undefined) : undefined,
+    // Clear loraId if model doesn't support LoRA (use null to explicitly clear in Convex)
+    loraId: supportsLora ? ($('#asset-type-lora').value || null) : null,
     qualityPreset: $('#asset-type-quality').value || undefined,
     isActive: $('#asset-type-active').checked,
   };

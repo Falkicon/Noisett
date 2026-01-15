@@ -60,16 +60,19 @@ export default defineSchema({
   // Director Mode tables
   assetTypes: defineTable({
     name: v.string(),
+    slug: v.optional(v.string()),         // Backend API identifier (e.g., "icons", "product") - optional for migration
     description: v.optional(v.string()),
     prePrompt: v.string(),
     postPrompt: v.string(),
     model: v.string(),                    // "replicate:flux-dev-lora"
     modelSettings: v.any(),               // Model-specific params
-    loraId: v.optional(v.id("loras")),
+    loraId: v.optional(v.union(v.id("loras"), v.null())),  // null clears the field
+    referenceImages: v.optional(v.array(v.id("_storage"))),  // Reference images for models that support them
     qualityPreset: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
-  }).index("by_active", ["isActive"]),
+  }).index("by_active", ["isActive"])
+    .index("by_slug", ["slug"]),
 
   generations: defineTable({
     assetTypeId: v.id("assetTypes"),
