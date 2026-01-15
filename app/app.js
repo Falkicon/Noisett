@@ -13,7 +13,7 @@ const state = {
   assetTypes: [], // Loaded from API
   currentAssetType: null, // Currently selected asset type with pre/post prompts
   pendingGeneration: null, // Stores generation context for saving to history
-  isDirector: false, // Director mode flag
+  isDirector: true, // Director mode flag - enabled by default until auth is implemented
 };
 
 // DOM Elements
@@ -44,8 +44,9 @@ function initDirectorMode() {
       : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
   } else {
-    // Load from localStorage
-    state.isDirector = localStorage.getItem(DIRECTOR_STORAGE_KEY) === 'true';
+    // Load from localStorage, default to true until auth is implemented
+    const storedValue = localStorage.getItem(DIRECTOR_STORAGE_KEY);
+    state.isDirector = storedValue === null ? true : storedValue === 'true';
   }
 
   updateDirectorNavVisibility();
@@ -89,7 +90,7 @@ async function checkHealth() {
     const health = result.data;
     state.isConnected = health.status !== 'error';
     updateStatusIndicator(health.status === 'healthy' ? 'connected' : 'degraded');
-    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded (No GPU)');
+    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded');
   } else {
     state.isConnected = false;
     updateStatusIndicator('error');
@@ -159,7 +160,7 @@ function renderHistorySidebar() {
     const isFavorite = item.isFavorite || false;
 
     return `
-      <div class="history-sidebar-item" data-id="${item._id || item.id}">
+      <div class="history-sidebar-item" data-id="${item._id || item.id}" onclick="viewHistoryItem('${item._id || item.id}')">
         ${thumbUrl ? `<img class="history-sidebar-thumb" src="${thumbUrl}" alt="">` : '<div class="history-sidebar-thumb"></div>'}
         <div class="history-sidebar-info">
           <div class="history-sidebar-prompt">${item.userPrompt || item.prompt || ''}</div>
@@ -167,7 +168,7 @@ function renderHistorySidebar() {
             <span>${formatRelativeTime(item.createdAt || item.created_at)}</span>
           </div>
         </div>
-        <div class="history-sidebar-actions">
+        <div class="history-sidebar-actions" onclick="event.stopPropagation()">
           <button class="history-action-btn ${isFavorite ? 'favorited' : ''}" onclick="toggleHistoryFavorite('${item._id || item.id}')" title="Favorite">
             ${isFavorite ? '★' : '☆'}
           </button>
@@ -272,35 +273,88 @@ async function performDeleteHistoryItem(id) {
   }
 }
 
+/**
+ * View a history item's full-size images in the results grid.
+ * @param {string} id - The generation ID
+ */
+function viewHistoryItem(id) {
+  const item = state.history.find((h) => (h._id || h.id) === id);
+  if (!item) {
+    showError('View failed', 'Generation not found in history');
+    return;
+  }
+
+  // Show the images in the results grid
+  if (item.images && item.images.length > 0) {
+    // Hide empty state, show grid
+    $('#results-empty').classList.add('hidden');
+    $('#results-loading').classList.add('hidden');
+    $('#results-grid').classList.remove('hidden');
+    $('#results-grid').innerHTML = '';
+
+    item.images.forEach((img, idx) => {
+      const card = document.createElement('div');
+      card.className = 'image-card';
+      const imageUrl = img.url.startsWith('http') ? img.url : `${API.baseUrl}${img.url}`;
+      card.innerHTML = `
+        <img src="${imageUrl}" alt="Generated image ${idx + 1}">
+        <button class="btn-download-corner" onclick="downloadImage('${img.url}')" title="Download">⬇</button>
+      `;
+      $('#results-grid').appendChild(card);
+    });
+
+    // Also populate the prompt field with the original prompt
+    const promptInput = $('#prompt');
+    if (promptInput) {
+      promptInput.value = item.userPrompt || item.prompt || '';
+      promptInput.dispatchEvent(new Event('input'));
+    }
+  } else {
+    showError('No images', 'This generation has no images to display');
+  }
+}
+
 // === Asset Types ===
 
 /**
+ * Get the backend API slug for an asset type.
+ * AFD: Uses the slug field from Convex data (source of truth).
+ * Falls back to 'product' if no slug found.
+ */
+function getAssetTypeSlug(assetType) {
+  if (!assetType) return 'product';
+  // Use slug from Convex data (AFD: data layer is source of truth)
+  return assetType.slug || 'product';
+}
+
+/**
  * Default asset types (fallback when API unavailable)
+ * Uses `slug` field to match Convex schema (AFD: consistent data model)
  */
 const DEFAULT_ASSET_TYPES = [
   {
-    id: 'product',
+    slug: 'product',
     name: 'Product Illustrations',
     prePrompt: 'A clean, modern product illustration of',
     postPrompt: ', minimalist style, white background, professional lighting',
     isActive: true,
   },
   {
-    id: 'icons',
+    slug: 'icons',
     name: 'Icons (Fluent 2)',
     prePrompt: 'A Fluent 2 design system icon of',
     postPrompt: ', simple shapes, consistent stroke width, monochrome',
     isActive: true,
   },
   {
-    id: 'logo',
+    slug: 'logo',
     name: 'Logo Illustrations',
     prePrompt: 'A modern logo design featuring',
     postPrompt: ', vector style, scalable, brand-appropriate',
     isActive: true,
   },
   {
-    id: 'premium',
+    slug: 'premium',
     name: 'Premium Illustrations',
     prePrompt: 'A premium, high-quality illustration of',
     postPrompt: ', detailed, artistic, publication-ready',
@@ -478,11 +532,12 @@ function setupGenerate() {
  */
 function getGenerationFormValues() {
   const assetType = state.currentAssetType;
+  const loraSelect = $('#lora-select');
   return {
     userPrompt: $('#prompt').value.trim(),
     assetTypeId: $('#asset-type').value,
     quality: assetType?.qualityPreset || $('#quality').value,
-    lora: assetType?.loraId || $('#lora-select').value || null,
+    lora: assetType?.loraId || loraSelect?.value || null,
   };
 }
 
@@ -514,9 +569,18 @@ async function performGeneration(formValues) {
   // Build combined prompt from Asset Type pre/post prompts
   const combinedPrompt = buildCombinedPrompt(userPrompt);
 
+  // Get the backend API slug for the asset type
+  const assetTypeSlug = getAssetTypeSlug(assetType);
+
+  // Get asset type ID for reference images support (prefer Convex _id, fallback to form value)
+  const convexAssetTypeId = assetType?._id || assetTypeId || null;
+
+  // Get model from Asset Type (stored directly, not in modelSettings)
+  const model = assetType?.model || null;
+
   // Store generation context for saving to history after completion
   state.pendingGeneration = {
-    assetTypeId: assetType?._id || assetTypeId,
+    assetTypeId: convexAssetTypeId,
     userPrompt,
     combinedPrompt,
   };
@@ -524,15 +588,17 @@ async function performGeneration(formValues) {
   console.log('[DEBUG] Starting generation:', {
     userPrompt,
     combinedPrompt,
-    assetTypeId,
+    assetTypeSlug,
+    assetTypeId: convexAssetTypeId,
+    model,
     quality,
     lora,
     modelSettings: assetType?.modelSettings,
   });
 
   // Use combined prompt for generation (applies Asset Type's pre/post prompts)
-  const result = await API.generate(combinedPrompt, assetTypeId, quality, 1, lora);
-  console.log('[DEBUG] Generate response:', JSON.stringify(result, null, 2));
+  // Pass assetTypeId for reference images, model from Asset Type settings
+  const result = await API.generate(combinedPrompt, assetTypeSlug, quality, 1, lora, convexAssetTypeId, model);
 
   if (!result.success) {
     console.error('[DEBUG] Generation error:', result.error);
@@ -542,7 +608,7 @@ async function performGeneration(formValues) {
 
   // Extract job ID from various possible structures
   state.currentJob = result.data?.job?.id || result.data?.job_id;
-  console.log('[DEBUG] Job ID extracted:', state.currentJob);
+  console.log('[DEBUG] Started job:', state.currentJob);
 
   if (!state.currentJob) {
     handleGenerationError('Generation failed', 'No job ID in response');
@@ -567,7 +633,6 @@ async function pollJobStatus() {
   if (!state.currentJob) return;
 
   const result = await API.getJob(state.currentJob);
-  console.log('[DEBUG] Job response:', JSON.stringify(result, null, 2));
 
   if (!result.success) {
     console.error('[DEBUG] Poll error:', result.error);
@@ -578,26 +643,19 @@ async function pollJobStatus() {
 
   // Job is nested at result.data.job
   const job = result.data?.job || result.data;
-  console.log('[DEBUG] Job object:', { status: job.status, progress: job.progress, hasImages: !!job.images });
-
-  updateProgress(job.progress || 0);
 
   // Backend uses 'complete' not 'completed'
   if (job.status === 'complete') {
-    console.log('[DEBUG] Job complete, images:', job.images);
+    console.log('[DEBUG] Job complete, images:', job.images?.length || 0);
     await showResults(job.images);
   } else if (job.status === 'failed') {
     console.log('[DEBUG] Job failed:', job.error_message);
     showError('Generation failed', job.error_message || job.error || 'Unknown error');
     resetGenerateUI();
   } else {
-    console.log('[DEBUG] Job still processing, polling again...');
+    // Silent polling - no log spam
     setTimeout(pollJobStatus, 1000);
   }
-}
-
-function updateProgress(progress) {
-  $('#progress-fill').style.width = `${progress}%`;
 }
 
 function showResults(images) {
@@ -617,8 +675,8 @@ function renderResultsGrid(images) {
     const imageUrl = img.url.startsWith('http') ? img.url : `${API.baseUrl}${img.url}`;
     card.innerHTML = `
       <img src="${imageUrl}" alt="Generated image ${idx + 1}">
+      <button class="btn-download-corner" onclick="downloadImage('${img.url}')" title="Download">⬇</button>
       <div class="image-overlay">
-        <button class="btn btn-small btn-secondary" onclick="downloadImage('${img.url}')">Download</button>
         <button class="btn btn-small btn-secondary" onclick="favoriteImage('${state.currentJob}', ${idx})">Favorite</button>
       </div>
     `;
@@ -713,6 +771,8 @@ async function loadLoras() {
 
 function populateLoraSelector() {
   const select = $('#lora-select');
+  if (!select) return; // LoRA selector removed from User mode UI
+
   const activeLoras = state.loras.filter((l) => l.status === 'deployed' || l.status === 'completed');
 
   select.innerHTML = '<option value="">None (Default)</option>' +
