@@ -1,8 +1,8 @@
 # Noisett - AI Agent Context
 
 > **Project:** Noisett (Brand Asset Generator)  
-> **Architecture:** Agent-First Development (AFD)  
-> **Status:** Phases 1-8 Complete ✅ | Code Review Fixes Applied | **v0.9.1-dev**  
+> **Architecture:** Agent-First Development (AFD) — **Fully Compliant** ✅  
+> **Status:** Director Mode Shipped | AFD Linter Passing | **v1.0.0-dev**  
 > **Live URL:** https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/
 
 ---
@@ -15,7 +15,7 @@
 | ----- | ---------------- | ------- | ------------------------------------------ |
 | 1     | Commands         | ✅ Done | 7 asset/job commands with Pydantic         |
 | 2     | MCP Server       | ✅ Done | FastMCP integration, 12 tools              |
-| 3     | ML Pipeline      | ✅ Done | Mock, HuggingFace, **Fireworks (FLUX)**    |
+| 3     | ML Pipeline      | ✅ Done | Mock, HuggingFace, **Replicate (FLUX)**    |
 | 4     | Deployment       | ✅ Done | Azure Container Apps, CI/CD, REST API      |
 | 5     | LoRA Training    | ✅ Done | 7 lora.\* commands (MVP simulation)        |
 | 6     | Quality Pipeline | ✅ Done | 5 quality commands (refine, upscale, etc)  |
@@ -35,9 +35,9 @@
 | **Registry**       | noisettacr.azurecr.io                                                |
 | **Resource Group** | noisett-rg                                                           |
 | **Version**        | v0.6.3                                                               |
-| **Backend**        | ML_BACKEND=fireworks (real FLUX inference via Fireworks.ai)          |
+| **Backend**        | ML_BACKEND=replicate (real FLUX inference via Replicate)             |
 
-> **Note:** Now using Fireworks.ai for real AI image generation with FLUX models (~$0.003/image).
+> **Note:** Now using Replicate for real AI image generation with FLUX dev-lora model.
 
 ---
 
@@ -73,7 +73,7 @@ Noisett is an internal AI image generation tool that creates on-brand illustrati
 │  asset.* │ job.* │ model.* │ lora.* │ quality.* │ history.* │ favorites.* │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                           ML INFERENCE LAYER                             │
-│          Mock | HuggingFace | Fireworks.ai (FLUX) | Replicate            │
+│          Mock | HuggingFace | Replicate (FLUX) | Fireworks              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,7 +193,7 @@ All commands return `CommandResult` with UX-enabling fields:
 | ----------- | -------------------------------------- | -------------- |
 | Commands    | Python + Pydantic                      | ✅ Implemented |
 | MCP Server  | FastMCP (official Python SDK)          | ✅ Implemented |
-| ML Backends | Mock, HuggingFace, Fireworks.ai (FLUX) | ✅ Implemented |
+| ML Backends | Mock, HuggingFace, Replicate (FLUX)    | ✅ Implemented |
 | REST API    | FastAPI                                | ✅ Implemented |
 | Web UI      | Vanilla JS/HTML/CSS                    | ✅ Implemented |
 | Compute     | Azure Container Apps (CPU)             | ✅ Deployed    |

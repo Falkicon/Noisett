@@ -4,6 +4,109 @@ import { internal } from "./_generated/api";
 
 const http = httpRouter();
 
+// CORS headers for cross-origin requests
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Helper to create JSON response with CORS headers
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
+
+// Handle OPTIONS preflight requests for all /api/* routes
+http.route({
+  path: "/api/asset-types/seed",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/needs-seed",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/create",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/list",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/get",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/update",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/delete",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/add-reference-image",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/remove-reference-image",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/asset-types/reorder-reference-images",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/generations/list",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/generations/create",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/generations/toggle-favorite",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/generations/delete",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
 // Asset Types endpoints
 
 // Seed default Asset Types (idempotent - safe to call multiple times)
@@ -12,9 +115,17 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx) => {
     const result = await ctx.runMutation(internal.assetTypes.seed, {});
-    return new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(result);
+  }),
+});
+
+// Migrate existing Asset Types to add slug field
+http.route({
+  path: "/api/asset-types/migrate-slugs",
+  method: "POST",
+  handler: httpAction(async (ctx) => {
+    const result = await ctx.runMutation(internal.assetTypes.migrateSlugs, {});
+    return jsonResponse(result);
   }),
 });
 
@@ -24,9 +135,7 @@ http.route({
   method: "GET",
   handler: httpAction(async (ctx) => {
     const result = await ctx.runQuery(internal.assetTypes.needsSeed, {});
-    return new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(result);
   }),
 });
 
@@ -36,9 +145,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const id = await ctx.runMutation(internal.assetTypes.create, body);
-    return new Response(JSON.stringify({ id }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ id });
   }),
 });
 
@@ -52,9 +159,7 @@ http.route({
     const data = await ctx.runQuery(internal.assetTypes.list, {
       activeOnly: activeOnly === "true" ? true : activeOnly === "false" ? false : undefined
     });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -65,15 +170,10 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.assetTypes.get, { id });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -83,9 +183,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     await ctx.runMutation(internal.assetTypes.update, body);
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
@@ -96,15 +194,59 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     await ctx.runMutation(internal.assetTypes.deleteById, { id });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
+    return jsonResponse({ success: true });
+  }),
+});
+
+// Reference Images endpoints
+http.route({
+  path: "/api/asset-types/add-reference-image",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    if (!body.id || !body.storageId) {
+      return jsonResponse({ error: "id and storageId parameters required" }, 400);
+    }
+    const result = await ctx.runMutation(internal.assetTypes.addReferenceImage, {
+      id: body.id,
+      storageId: body.storageId,
     });
+    return jsonResponse(result);
+  }),
+});
+
+http.route({
+  path: "/api/asset-types/remove-reference-image",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    if (!body.id || !body.storageId) {
+      return jsonResponse({ error: "id and storageId parameters required" }, 400);
+    }
+    const result = await ctx.runMutation(internal.assetTypes.removeReferenceImage, {
+      id: body.id,
+      storageId: body.storageId,
+    });
+    return jsonResponse(result);
+  }),
+});
+
+http.route({
+  path: "/api/asset-types/reorder-reference-images",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    if (!body.id || !body.storageIds) {
+      return jsonResponse({ error: "id and storageIds parameters required" }, 400);
+    }
+    const result = await ctx.runMutation(internal.assetTypes.reorderReferenceImages, {
+      id: body.id,
+      storageIds: body.storageIds,
+    });
+    return jsonResponse(result);
   }),
 });
 
@@ -115,9 +257,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const id = await ctx.runMutation(internal.loras.create, body);
-    return new Response(JSON.stringify({ id }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ id });
   }),
 });
 
@@ -137,9 +277,7 @@ http.route({
       baseModel: baseModel || undefined,
       activeOnly
     });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -150,15 +288,10 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.loras.get, { id });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -168,9 +301,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     await ctx.runMutation(internal.loras.update, body);
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
@@ -181,15 +312,10 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     await ctx.runMutation(internal.loras.deleteById, { id });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
@@ -200,15 +326,10 @@ http.route({
     const url = new URL(request.url);
     const replicateTrainingId = url.searchParams.get("replicateTrainingId");
     if (!replicateTrainingId) {
-      return new Response(JSON.stringify({ error: "replicateTrainingId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "replicateTrainingId parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.loras.byReplicateId, { replicateTrainingId });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -219,15 +340,10 @@ http.route({
     const url = new URL(request.url);
     const triggerWord = url.searchParams.get("triggerWord");
     if (!triggerWord) {
-      return new Response(JSON.stringify({ error: "triggerWord parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "triggerWord parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.loras.byTriggerWord, { triggerWord });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -238,9 +354,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const id = await ctx.runMutation(internal.webhookEvents.create, body);
-    return new Response(JSON.stringify({ id }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ id });
   }),
 });
 
@@ -251,15 +365,10 @@ http.route({
     const url = new URL(request.url);
     const eventId = url.searchParams.get("eventId");
     if (!eventId) {
-      return new Response(JSON.stringify({ error: "eventId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "eventId parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.webhookEvents.byEventId, { eventId });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -270,9 +379,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const id = await ctx.runMutation(internal.trainingImages.create, body);
-    return new Response(JSON.stringify({ id }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ id });
   }),
 });
 
@@ -283,15 +390,10 @@ http.route({
     const url = new URL(request.url);
     const loraId = url.searchParams.get("loraId");
     if (!loraId) {
-      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "loraId parameter required" }, 400);
     }
     const data = await ctx.runQuery(internal.trainingImages.listByLora, { loraId });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -302,15 +404,10 @@ http.route({
     const url = new URL(request.url);
     const loraId = url.searchParams.get("loraId");
     if (!loraId) {
-      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "loraId parameter required" }, 400);
     }
     const count = await ctx.runQuery(internal.trainingImages.countByLora, { loraId });
-    return new Response(JSON.stringify({ count }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ count });
   }),
 });
 
@@ -321,15 +418,10 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     await ctx.runMutation(internal.trainingImages.deleteById, { id });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
@@ -340,15 +432,10 @@ http.route({
     const url = new URL(request.url);
     const loraId = url.searchParams.get("loraId");
     if (!loraId) {
-      return new Response(JSON.stringify({ error: "loraId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "loraId parameter required" }, 400);
     }
     await ctx.runMutation(internal.trainingImages.deleteByLora, { loraId });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
@@ -358,9 +445,7 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const uploadUrl = await ctx.storage.generateUploadUrl();
-    return new Response(JSON.stringify({ uploadUrl }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ uploadUrl });
   }),
 });
 
@@ -372,12 +457,10 @@ http.route({
     // Note: Convex doesn't expose storage usage in the API yet
     // For now, return a mock response that can be used for quota checking
     // In a real implementation, this would query actual storage usage
-    return new Response(JSON.stringify({
+    return jsonResponse({
       used_bytes: 0,
       quota_bytes: 10737418240, // 10GB default
       usage_percent: 0
-    }), {
-      headers: { "Content-Type": "application/json" }
     });
   }),
 });
@@ -390,15 +473,10 @@ http.route({
     const url = new URL(request.url);
     const storageId = url.searchParams.get("storageId");
     if (!storageId) {
-      return new Response(JSON.stringify({ error: "storageId parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "storageId parameter required" }, 400);
     }
     const downloadUrl = await ctx.storage.getUrl(storageId);
-    return new Response(JSON.stringify({ url: downloadUrl }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ url: downloadUrl });
   }),
 });
 
@@ -409,9 +487,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const id = await ctx.runMutation(internal.generations.create, body);
-    return new Response(JSON.stringify({ id }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ id });
   }),
 });
 
@@ -426,9 +502,7 @@ http.route({
     const data = await ctx.runQuery(internal.generations.list, {
       favorite
     });
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse(data);
   }),
 });
 
@@ -438,9 +512,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.json();
     const result = await ctx.runMutation(internal.generations.toggleFavorite, body);
-    return new Response(JSON.stringify({ success: true, ...result }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true, ...result });
   }),
 });
 
@@ -451,16 +523,11 @@ http.route({
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) {
-      return new Response(JSON.stringify({ error: "id parameter required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "id parameter required" }, 400);
     }
     await ctx.runMutation(internal.generations.deleteById, { id });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    return jsonResponse({ success: true });
   }),
 });
 
-export default http;
+export default http;// Force redeploy Wed, Jan 14, 2026 11:22:37 PM

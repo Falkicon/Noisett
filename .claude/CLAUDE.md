@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Noisett is an **AI Brand Asset Generator** — generate on-brand illustrations and icons using AI. Built with Agent-First Development (AFD) principles where commands are the source of truth.
 
+**Status:** AFD Compliant ✅ | Director Mode (v1.0)  
 **Live URL:** https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io/
 
 ## Build Commands

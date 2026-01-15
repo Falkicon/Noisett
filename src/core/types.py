@@ -65,7 +65,7 @@ class Job(BaseModel):
     status: JobStatus = Field(..., description="Current job status")
     prompt: str = Field(..., description="Original prompt text")
     asset_type: AssetType = Field(..., description="Type of asset being generated")
-    model: ModelId = Field(..., description="Model used for generation")
+    model: str = Field(..., description="Model ID (e.g., 'hidream', 'replicate:nano-banana-pro')")
     quality: QualityPreset = Field(..., description="Quality preset selected")
     count: int = Field(..., ge=1, le=4, description="Number of images requested")
     progress: float = Field(default=0, ge=0, le=100, description="Progress percentage")
@@ -81,6 +81,9 @@ class Job(BaseModel):
     )
     lora_id: str | None = Field(
         default=None, description="LoRA ID used for styled generation"
+    )
+    asset_type_id: str | None = Field(
+        default=None, description="Convex Asset Type ID (for reference images)"
     )
 
 

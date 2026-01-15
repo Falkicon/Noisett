@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Noisett Director — Asset Type Configuration</title>
+  <title>Fabric UX Image Generator — Director</title>
   <link rel="stylesheet" href="styles.css">
   <style>
     /* Director-specific styles */
@@ -188,6 +188,40 @@
       color: var(--text-muted);
     }
 
+    .reference-images-count {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-bottom: var(--space-md);
+    }
+
+    .btn-remove-ref {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+
+    .upload-preview-item:hover .btn-remove-ref {
+      opacity: 1;
+    }
+
+    .upload-preview-item {
+      position: relative;
+    }
+
     @media (max-width: 1024px) {
       .director-layout {
         grid-template-columns: 1fr;
@@ -205,17 +239,13 @@
     <!-- Header -->
     <header class="header">
       <div class="header-brand">
-        <span class="logo">🎨</span>
-        <h1>Noisett Director</h1>
+        <h1>Fabric UX Image Generator</h1>
       </div>
-      <nav class="nav">
-        <a href="index.html" class="nav-tab">User Mode</a>
-        <span class="nav-tab active">Director Mode</span>
-      </nav>
       <div class="header-status">
         <span id="status-indicator" class="status-dot"></span>
         <span id="status-text">Connecting...</span>
       </div>
+      <a href="index.html" class="btn btn-outline">User Mode</a>
     </header>
 
     <!-- Main Content -->
@@ -319,6 +349,22 @@
                 <div id="model-settings" class="model-settings-grid">
                   <!-- Dynamic model settings populated based on selected model -->
                 </div>
+              </div>
+
+              <!-- Reference Images Section (shown for models that support reference images) -->
+              <div id="reference-images-section" class="editor-section hidden">
+                <div class="editor-section-title">Reference Images</div>
+                <p class="hint">Upload images to guide the model's style. This model supports up to <span id="max-reference-images">0</span> reference images.</p>
+                <div class="reference-images-count">
+                  <span id="reference-images-current">0</span> / <span id="reference-images-max">0</span> images
+                </div>
+                <div id="reference-dropzone" class="dropzone">
+                  <span class="dropzone-icon">🖼️</span>
+                  <p>Drag & drop reference images here</p>
+                  <span class="dropzone-hint">or click to browse</span>
+                  <input type="file" id="reference-input" multiple accept="image/png,image/jpeg,image/webp" hidden>
+                </div>
+                <div id="reference-preview" class="upload-preview"></div>
               </div>
 
               <!-- Quality Section -->

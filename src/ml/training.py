@@ -131,12 +131,13 @@ async def start_replicate_training(
     Raises:
         ValueError: If required environment variables missing or API fails
     """
-    api_token = os.getenv("REPLICATE_API_TOKEN")
+    # Support both REPLICATE_API_KEY and REPLICATE_API_TOKEN for flexibility
+    api_token = os.getenv("REPLICATE_API_KEY") or os.getenv("REPLICATE_API_TOKEN")
     webhook_secret = os.getenv("REPLICATE_WEBHOOK_SECRET")
     webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://noisett.thankfulplant-c547bdac.eastus.azurecontainerapps.io")
 
     if not api_token:
-        raise ValueError("REPLICATE_API_TOKEN environment variable is required")
+        raise ValueError("REPLICATE_API_KEY environment variable is required")
     if not webhook_secret:
         raise ValueError("REPLICATE_WEBHOOK_SECRET environment variable is required")
 

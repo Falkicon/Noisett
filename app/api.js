@@ -3,7 +3,7 @@
  * Complete API surface for all backend endpoints
  */
 const API = {
-  baseUrl: 'http://localhost:8000',
+  baseUrl: window.location.origin,
   convexUrl: 'https://neighborly-gazelle-692.convex.site',
 
   /**
@@ -71,9 +71,11 @@ const API = {
   },
 
   // === Generation ===
-  async generate(prompt, assetType = 'product', quality = 'standard', count = 1, lora = null) {
+  async generate(prompt, assetType = 'product', quality = 'standard', count = 1, lora = null, assetTypeId = null, model = null) {
     const body = { prompt, asset_type: assetType, quality, count };
     if (lora) body.lora = lora;
+    if (assetTypeId) body.asset_type_id = assetTypeId;
+    if (model) body.model = model;
     return this.request('POST', '/api/generate', body);
   },
 

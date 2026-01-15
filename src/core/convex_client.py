@@ -41,7 +41,8 @@ class ConvexClient:
         if not self.deployment_url:
             raise ValueError("CONVEX_URL environment variable is required")
 
-        self.base_url = self.deployment_url.rstrip("/")
+        # HTTP actions use .convex.site, not .convex.cloud
+        self.base_url = self.deployment_url.rstrip("/").replace(".convex.cloud", ".convex.site")
         self._client = httpx.AsyncClient(timeout=30.0)
         self._last_request_time = 0
         self._min_request_interval = 0.1  # 100ms between requests
@@ -148,6 +149,18 @@ class ConvexClient:
             LoRA data or None if not found
         """
         result = await self._make_request("GET", "/api/loras/get", params={"id": lora_id})
+        return result
+
+    async def get_asset_type(self, asset_type_id: str) -> Optional[Dict[str, Any]]:
+        """Get Asset Type by ID.
+
+        Args:
+            asset_type_id: Asset Type ID
+
+        Returns:
+            Asset Type data or None if not found
+        """
+        result = await self._make_request("GET", "/api/asset-types/get", params={"id": asset_type_id})
         return result
 
     async def list_loras(

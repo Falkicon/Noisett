@@ -184,8 +184,6 @@ body {
 .main {
   flex: 1;
   padding: var(--space-xl);
-  max-width: 1400px;
-  margin: 0 auto;
   width: 100%;
 }
 
@@ -237,7 +235,7 @@ body {
 
 .user-layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 280px 1fr;
   gap: var(--space-xl);
   height: calc(100vh - 140px);
 }
@@ -417,17 +415,44 @@ body {
   font-size: 0.875rem;
 }
 
-/* Generation Panel */
+/* Generation Panel - Column layout with input on top, results below */
 .generation-panel {
-  display: grid;
-  grid-template-columns: 400px 1fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-xl);
+  height: 100%;
+  overflow-y: auto;
 }
 
+/* Panel Input - Single column, prompt on top, dropdowns below */
 .panel-input {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+}
+
+/* Prompt section spans full width */
+.panel-input .form-group:first-child {
+  width: 100%;
+}
+
+/* Dropdowns row - side by side */
+.panel-input .form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+}
+
+/* Generate button full width */
+.panel-input .btn-large {
+  width: 100%;
+}
+
+.panel-results {
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-results {
@@ -445,9 +470,24 @@ body {
   justify-content: center;
 }
 
-.panel-results .image-grid {
+.panel-results .image-grid,
+#results-grid {
   flex: 1;
   width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--space-lg);
+}
+
+#results-grid .image-card {
+  max-width: 100%;
+}
+
+#results-grid .image-card img {
+  max-height: 60vh;
+  width: auto;
+  height: auto;
 }
 
 /* LoRAs Layout */
@@ -549,6 +589,20 @@ textarea {
   background: var(--bg-elevated);
 }
 
+.btn-outline {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: var(--space-sm) var(--space-md);
+  text-decoration: none;
+}
+
+.btn-outline:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 .btn-danger {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
@@ -634,29 +688,57 @@ textarea {
 
 /* Image Grid */
 .image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  justify-content: center;
 }
 
 .image-card {
   position: relative;
-  aspect-ratio: 1;
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-tertiary);
   cursor: pointer;
   transition: transform var(--transition-fast);
+  max-width: 100%;
 }
 
 .image-card:hover {
-  transform: scale(1.02);
+  transform: scale(1.01);
 }
 
 .image-card img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.btn-download-corner {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+  z-index: 10;
+}
+
+.btn-download-corner:hover {
+  background: var(--accent-primary);
+  transform: scale(1.1);
 }
 
 .image-card .image-overlay {
@@ -1069,54 +1151,27 @@ code {
 
 .prompt-label {
   display: block;
-  font-size: 0.8125rem;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  min-height: 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: var(--space-xs) 0;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
-.prompt-label:empty::before {
-  content: '(No prefix/suffix for this asset type)';
-  font-style: italic;
-  opacity: 0.5;
-}
-
-.prompt-label-pre:empty::before {
-  content: '(No prefix)';
-}
-
-.prompt-label-post:empty::before {
-  content: '(No suffix)';
+.prompt-label:empty {
+  display: none;
 }
 
 .prompt-label-pre {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  /* Title style above textarea */
 }
 
 .prompt-label-post {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  /* Title style below textarea */
 }
 
-/* When pre-prompt is visible, adjust textarea border radius */
-.prompt-builder .prompt-label-pre:not(:empty) + textarea {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-/* When post-prompt is visible, adjust textarea border radius */
-.prompt-builder textarea:has(+ .prompt-label-post:not(:empty)) {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
+/* Textarea keeps its normal border radius with title-style labels */
 
 .prompt-builder textarea {
   resize: vertical;
