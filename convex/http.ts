@@ -377,4 +377,65 @@ http.route({
   }),
 });
 
+// Generations endpoints
+http.route({
+  path: "/api/generations/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const id = await ctx.runMutation(internal.generations.create, body);
+    return new Response(JSON.stringify({ id }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/generations/list",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const favoriteParam = url.searchParams.get("favorite");
+    const favorite = favoriteParam === "true" ? true : favoriteParam === "false" ? false : undefined;
+
+    const data = await ctx.runQuery(internal.generations.list, {
+      favorite
+    });
+    return new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/generations/toggle-favorite",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const result = await ctx.runMutation(internal.generations.toggleFavorite, body);
+    return new Response(JSON.stringify({ success: true, ...result }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+http.route({
+  path: "/api/generations/delete",
+  method: "DELETE",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return new Response(JSON.stringify({ error: "id parameter required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    await ctx.runMutation(internal.generations.deleteById, { id });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
 export default http;
