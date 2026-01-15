@@ -13,14 +13,65 @@ const state = {
   assetTypes: [], // Loaded from API
   currentAssetType: null, // Currently selected asset type with pre/post prompts
   pendingGeneration: null, // Stores generation context for saving to history (Issue #21)
+  isDirector: false, // Director mode flag (Issue #23)
 };
 
 // DOM Elements
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
+// === Director Mode Auth (Issue #23) ===
+const DIRECTOR_STORAGE_KEY = 'noisett_isDirector';
+
+/**
+ * Initialize Director mode from URL params and localStorage
+ * URL param ?director=true sets the flag and persists to localStorage
+ */
+function initDirectorMode() {
+  // Check URL params first
+  const urlParams = new URLSearchParams(window.location.search);
+  const directorParam = urlParams.get('director');
+
+  if (directorParam === 'true') {
+    // Set flag in localStorage when URL param is present
+    localStorage.setItem(DIRECTOR_STORAGE_KEY, 'true');
+    state.isDirector = true;
+
+    // Clean up URL (remove the param to avoid sharing)
+    urlParams.delete('director');
+    const newUrl = urlParams.toString()
+      ? `${window.location.pathname}?${urlParams.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+  } else {
+    // Load from localStorage
+    state.isDirector = localStorage.getItem(DIRECTOR_STORAGE_KEY) === 'true';
+  }
+
+  updateDirectorNavVisibility();
+}
+
+/**
+ * Check if user has Director mode access
+ * @returns {boolean}
+ */
+function isDirectorMode() {
+  return state.isDirector;
+}
+
+/**
+ * Update the visibility of the Director nav link based on auth state
+ */
+function updateDirectorNavVisibility() {
+  const directorNav = $('#director-nav');
+  if (directorNav) {
+    directorNav.classList.toggle('hidden', !state.isDirector);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  initDirectorMode();
   setupGenerate();
   setupPromptBuilder();
   setupHistorySidebar();
@@ -144,17 +195,10 @@ function formatRelativeTime(timestamp) {
   return date.toLocaleDateString();
 }
 
-<<<<<<< HEAD
 // History Actions (Issue #22)
 async function toggleHistoryFavorite(id) {
   try {
-    await ConvexAPI.toggleFavorite(id);
-=======
-// History Actions (Issue #21)
-async function toggleHistoryFavorite(id) {
-  try {
     await API.toggleGenerationFavorite(id);
->>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     // Update local state
     const item = state.history.find((h) => (h._id || h.id) === id);
     if (item) {
@@ -207,11 +251,7 @@ async function deleteHistoryItem(id) {
   }
 
   try {
-<<<<<<< HEAD
-    await ConvexAPI.deleteGeneration(id);
-=======
     await API.deleteGeneration(id);
->>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     // Remove from local state
     state.history = state.history.filter((h) => (h._id || h.id) !== id);
     renderHistorySidebar();
@@ -262,16 +302,9 @@ const DEFAULT_ASSET_TYPES = [
  */
 async function loadAssetTypes() {
   try {
-<<<<<<< HEAD
-    // Try to load from API
     const result = await API.getAssetTypes();
     const items = result?.data || result || [];
-    // Filter to only active items if they have isActive property
-=======
-    const result = await API.getAssetTypes();
-    const items = result || [];
     // Filter to only active items
->>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     const activeItems = Array.isArray(items)
       ? items.filter((at) => at.isActive !== false)
       : [];
@@ -618,7 +651,3 @@ function populateLoraSelector() {
   select.innerHTML = '<option value="">None (Default)</option>' +
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
