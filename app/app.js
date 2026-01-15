@@ -7,7 +7,6 @@
 const state = {
   activeTab: 'generate',
   loras: [],
-  selectedLora: null,
   currentJob: null,
   history: [],
   favorites: [],
@@ -22,12 +21,11 @@ const $$ = (selector) => document.querySelectorAll(selector);
 document.addEventListener('DOMContentLoaded', async () => {
   setupTabs();
   setupGenerate();
-  setupLoras();
   setupHistory();
   setupFavorites();
-  
+
   await checkHealth();
-  await loadLoras();
+  await loadLoras(); // Still needed for LoRA selector in Generate tab
 });
 
 // === Health Check ===
@@ -63,15 +61,14 @@ function switchTab(tabName) {
   // Update nav
   $$('.nav-tab').forEach((t) => t.classList.remove('active'));
   $(`.nav-tab[data-tab="${tabName}"]`).classList.add('active');
-  
+
   // Update content
   $$('.tab-content').forEach((c) => c.classList.add('hidden'));
   $(`#tab-${tabName}`).classList.remove('hidden');
-  
+
   state.activeTab = tabName;
-  
+
   // Load data for tab
-  if (tabName === 'loras') loadLoras();
   if (tabName === 'history') loadHistory();
   if (tabName === 'favorites') loadFavorites();
 }
@@ -228,293 +225,26 @@ async function favoriteImage(jobId, imageIndex) {
   }
 }
 
-// === LoRAs Tab ===
+// === LoRAs (for Generate tab selector) ===
 async function loadLoras() {
   try {
-    // Use local API which proxies to Convex (avoids CORS)
     const result = await API.listLoras();
     const loras = result.data || result || [];
     state.loras = Array.isArray(loras) ? loras : [];
-    renderLoraList();
     populateLoraSelector();
   } catch (error) {
     console.error('Failed to load LoRAs:', error);
     state.loras = [];
-    renderLoraList();
     populateLoraSelector();
   }
-}
-
-function renderLoraList() {
-  const list = $('#lora-list');
-  
-  if (state.loras.length === 0) {
-    list.innerHTML = '<div class="empty-state"><span class="empty-icon">🎨</span><p>No LoRAs yet</p></div>';
-    return;
-  }
-
-  list.innerHTML = state.loras.map((lora) => `
-    <div class="lora-item ${state.selectedLora?._id === lora._id ? 'active' : ''}" data-id="${lora._id}">
-      <div>
-        <div class="lora-item-name">${lora.name}</div>
-        <div class="lora-item-trigger">${lora.triggerWord}</div>
-      </div>
-      <span class="status-badge ${lora.status}">${lora.status}</span>
-    </div>
-  `).join('');
-
-  $$('.lora-item').forEach((item) => {
-    item.addEventListener('click', () => selectLora(item.dataset.id));
-  });
 }
 
 function populateLoraSelector() {
   const select = $('#lora-select');
   const activeLoras = state.loras.filter((l) => l.status === 'deployed' || l.status === 'completed');
-  
+
   select.innerHTML = '<option value="">None (Default)</option>' +
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
-}
-
-function selectLora(id) {
-  state.selectedLora = state.loras.find((l) => l._id === id);
-  renderLoraList();
-  showLoraDetail();
-}
-
-function showLoraDetail() {
-  if (!state.selectedLora) return;
-
-  $('#lora-empty').classList.add('hidden');
-  $('#lora-create-form').classList.add('hidden');
-  $('#lora-detail').classList.remove('hidden');
-
-  const lora = state.selectedLora;
-  $('#lora-detail-name').textContent = lora.name;
-  $('#lora-detail-status').textContent = lora.status;
-  $('#lora-detail-status').className = `status-badge ${lora.status}`;
-  $('#lora-detail-trigger').textContent = lora.triggerWord;
-  $('#lora-detail-model').textContent = lora.baseModel;
-  $('#lora-detail-images').textContent = '...'; // Loading
-
-  // Show/hide sections based on status
-  const canUpload = ['created', 'uploading', 'ready_to_train'].includes(lora.status);
-  const isTraining = lora.status === 'training';
-  
-  $('#upload-section').classList.toggle('hidden', !canUpload);
-  $('#training-section').classList.toggle('hidden', !isTraining);
-  $('#lora-train-btn').classList.toggle('hidden', lora.status !== 'ready_to_train');
-  
-  // Fetch and display training images
-  loadTrainingImages(lora._id);
-}
-
-async function loadTrainingImages(loraId) {
-  try {
-    const response = await API.request('GET', `/api/lora/${loraId}/training-images`);
-    
-    if (!response.success) {
-      console.error('Failed to load training images:', response);
-      return;
-    }
-    
-    const images = response.data || [];
-    $('#lora-detail-images').textContent = images.length;
-    
-    // Display images in the upload preview area
-    const preview = $('#upload-preview');
-    preview.innerHTML = '';
-    
-    for (const img of images) {
-      const div = document.createElement('div');
-      div.className = 'upload-preview-item uploaded';
-      
-      // Use the pre-resolved URL from the API
-      if (img.url) {
-        div.innerHTML = `<img src="${img.url}" alt="${img.filename}" title="${img.filename}">`;
-      } else {
-        div.innerHTML = `<span class="error-icon">⚠️</span>`;
-        div.title = 'Image not found';
-      }
-      preview.appendChild(div);
-    }
-    
-    // Show train button if we have enough images
-    if (images.length >= 5) {
-      $('#lora-train-btn').classList.remove('hidden');
-    }
-    
-  } catch (error) {
-    console.error('Failed to load training images:', error);
-    $('#lora-detail-images').textContent = '?';
-  }
-}
-
-function setupLoras() {
-  // Create button
-  $('#create-lora-btn').addEventListener('click', showCreateForm);
-  $('#lora-create-cancel').addEventListener('click', hideCreateForm);
-  $('#lora-create-submit').addEventListener('click', createLora);
-  
-  // Upload dropzone
-  const dropzone = $('#upload-dropzone');
-  const input = $('#upload-input');
-
-  dropzone.addEventListener('click', () => input.click());
-  dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.classList.add('dragover');
-  });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', handleDrop);
-  input.addEventListener('change', (e) => handleFiles(e.target.files));
-
-  // Actions
-  $('#lora-train-btn').addEventListener('click', startTraining);
-  $('#lora-delete-btn').addEventListener('click', deleteLora);
-}
-
-function showCreateForm() {
-  $('#lora-empty').classList.add('hidden');
-  $('#lora-detail').classList.add('hidden');
-  $('#lora-create-form').classList.remove('hidden');
-}
-
-function hideCreateForm() {
-  $('#lora-create-form').classList.add('hidden');
-  $('#lora-empty').classList.remove('hidden');
-  state.selectedLora = null;
-  renderLoraList();
-}
-
-async function createLora() {
-  const name = $('#lora-name').value.trim();
-  const trigger = $('#lora-trigger').value.trim();
-  const model = $('#lora-model').value;
-  const steps = parseInt($('#lora-steps').value) || 1000;
-
-  if (!name || !trigger) {
-    alert('Please fill in name and trigger word');
-    return;
-  }
-
-  try {
-    // Use local API which proxies to Convex
-    const result = await API.createLora(name, trigger, model, steps);
-
-    await loadLoras();
-    hideCreateForm();
-    
-    // Select the new LoRA
-    const newId = result.data?.id || result.id;
-    if (newId) {
-      selectLora(newId);
-    }
-  } catch (error) {
-    alert('Failed to create LoRA: ' + error.message);
-  }
-}
-
-function handleDrop(e) {
-  e.preventDefault();
-  $('#upload-dropzone').classList.remove('dragover');
-  const files = e.dataTransfer.files;
-  handleFiles(files);
-}
-
-async function handleFiles(files) {
-  if (!state.selectedLora) return;
-
-  const preview = $('#upload-preview');
-  preview.innerHTML = '';
-  
-  let uploadedCount = 0;
-  const loraId = state.selectedLora._id;
-
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
-
-    // Preview immediately
-    const div = document.createElement('div');
-    div.className = 'upload-preview-item';
-    div.innerHTML = '<div class="uploading-indicator">⏳</div>';
-    preview.appendChild(div);
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      div.innerHTML = `<img src="${e.target.result}">`;
-    };
-    reader.readAsDataURL(file);
-    
-    try {
-      // 1. Get upload URL from backend
-      const urlResponse = await API.getUploadUrl(loraId);
-      const uploadUrl = urlResponse.data.uploadUrl;
-      
-      // 2. Upload file to Convex storage
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        body: file,
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`);
-      }
-      
-      const { storageId } = await uploadResponse.json();
-      
-      // 3. Register training image in Convex
-      await API.request('POST', '/api/training-images', {
-        lora_id: loraId,
-        storage_id: storageId,
-        filename: file.name,
-        file_type: file.type,
-        file_size: file.size,
-      });
-      
-      uploadedCount++;
-      div.classList.add('uploaded');
-      
-    } catch (error) {
-      console.error(`Failed to upload ${file.name}:`, error);
-      div.classList.add('upload-error');
-      div.title = error.message;
-    }
-  }
-  
-  console.log(`${uploadedCount}/${files.length} files uploaded to Convex`);
-  
-  // Refresh LoRA to get updated image count
-  if (uploadedCount > 0) {
-    try {
-      const updatedLora = await API.getLora(loraId);
-      if (updatedLora.success) {
-        state.selectedLora = updatedLora.data;
-        showLoraDetail();
-      }
-    } catch (e) {
-      console.error('Failed to refresh LoRA:', e);
-    }
-  }
-}
-
-async function startTraining() {
-  if (!state.selectedLora) return;
-  alert('Training would start here. Requires REPLICATE_API_TOKEN to be configured.');
-}
-
-async function deleteLora() {
-  if (!state.selectedLora) return;
-  if (!confirm(`Delete "${state.selectedLora.name}"?`)) return;
-
-  try {
-    await API.deleteLora(state.selectedLora._id);
-    state.selectedLora = null;
-    await loadLoras();
-    hideCreateForm();
-  } catch (error) {
-    alert('Failed to delete: ' + error.message);
-  }
 }
 
 // === History Tab ===
