@@ -5,12 +5,13 @@
 
 // State
 const state = {
-  activeTab: 'generate',
   loras: [],
   currentJob: null,
   history: [],
-  favorites: [],
+  historyFilter: 'all', // 'all' or 'favorites'
   isConnected: false,
+  assetTypes: [], // Loaded from API
+  currentAssetType: null, // Currently selected asset type with pre/post prompts
 };
 
 // DOM Elements
@@ -19,13 +20,14 @@ const $$ = (selector) => document.querySelectorAll(selector);
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  setupTabs();
   setupGenerate();
-  setupHistory();
-  setupFavorites();
+  setupPromptBuilder();
+  setupHistorySidebar();
 
   await checkHealth();
-  await loadLoras(); // Still needed for LoRA selector in Generate tab
+  await loadAssetTypes();
+  await loadLoras();
+  await loadHistorySidebar();
 });
 
 // === Health Check ===
@@ -47,30 +49,278 @@ function updateStatusIndicator(status) {
   dot.className = `status-dot ${status}`;
 }
 
-// === Tab Navigation ===
-function setupTabs() {
-  $$('.nav-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.dataset.tab;
-      switchTab(tabName);
+// === History Sidebar ===
+function setupHistorySidebar() {
+  // Filter buttons
+  $$('.filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const filter = btn.dataset.filter;
+      state.historyFilter = filter;
+
+      // Update active state
+      $$('.filter-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      renderHistorySidebar();
     });
   });
 }
 
-function switchTab(tabName) {
-  // Update nav
-  $$('.nav-tab').forEach((t) => t.classList.remove('active'));
-  $(`.nav-tab[data-tab="${tabName}"]`).classList.add('active');
+async function loadHistorySidebar() {
+  try {
+    const result = await API.getHistory();
+    const items = result.data || result.items || result || [];
+    state.history = Array.isArray(items) ? items : [];
+    renderHistorySidebar();
+  } catch (error) {
+    console.error('Failed to load history:', error);
+    state.history = [];
+    renderHistorySidebar();
+  }
+}
 
-  // Update content
-  $$('.tab-content').forEach((c) => c.classList.add('hidden'));
-  $(`#tab-${tabName}`).classList.remove('hidden');
+function renderHistorySidebar() {
+  const list = $('#history-list');
+  const empty = $('#history-empty');
 
-  state.activeTab = tabName;
+  // Filter history based on current filter
+  let filteredHistory = state.history;
+  if (state.historyFilter === 'favorites') {
+    filteredHistory = state.history.filter((item) => item.isFavorite);
+  }
 
-  // Load data for tab
-  if (tabName === 'history') loadHistory();
-  if (tabName === 'favorites') loadFavorites();
+  if (filteredHistory.length === 0) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  list.innerHTML = filteredHistory.map((item) => {
+    const thumb = item.thumbnail || item.images?.[0]?.url || '';
+    const thumbUrl = thumb.startsWith('http') ? thumb : (thumb ? `${API.baseUrl}${thumb}` : '');
+    const isFavorite = item.isFavorite || false;
+
+    return `
+      <div class="history-sidebar-item" data-id="${item._id || item.id}">
+        ${thumbUrl ? `<img class="history-sidebar-thumb" src="${thumbUrl}" alt="">` : '<div class="history-sidebar-thumb"></div>'}
+        <div class="history-sidebar-info">
+          <div class="history-sidebar-prompt">${item.userPrompt || item.prompt || ''}</div>
+          <div class="history-sidebar-meta">
+            <span>${formatRelativeTime(item.createdAt || item.created_at)}</span>
+          </div>
+        </div>
+        <div class="history-sidebar-actions">
+          <button class="history-action-btn ${isFavorite ? 'favorited' : ''}" onclick="toggleHistoryFavorite('${item._id || item.id}')" title="Favorite">
+            ${isFavorite ? '★' : '☆'}
+          </button>
+          <button class="history-action-btn" onclick="regenerateFromHistory('${item._id || item.id}')" title="Regenerate">
+            ↻
+          </button>
+          <button class="history-action-btn delete" onclick="deleteHistoryItem('${item._id || item.id}')" title="Delete">
+            ×
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+// History Actions (to be connected to API in Issue #13)
+async function toggleHistoryFavorite(id) {
+  console.log('Toggle favorite:', id);
+  // TODO: Implement in Issue #13
+}
+
+async function regenerateFromHistory(id) {
+  console.log('Regenerate:', id);
+  // TODO: Implement in Issue #13
+}
+
+async function deleteHistoryItem(id) {
+  console.log('Delete:', id);
+  // TODO: Implement in Issue #13
+}
+
+// === Asset Types & Prompt Builder ===
+
+/**
+ * Default asset types (used until API integration in Issue #12)
+ * Each asset type has pre/post prompts that wrap the user's input
+ */
+const DEFAULT_ASSET_TYPES = [
+  {
+    id: 'product',
+    name: 'Product Illustrations',
+    prePrompt: 'A clean, modern product illustration of',
+    postPrompt: ', minimalist style, white background, professional lighting',
+  },
+  {
+    id: 'icons',
+    name: 'Icons (Fluent 2)',
+    prePrompt: 'A Fluent 2 design system icon of',
+    postPrompt: ', simple shapes, consistent stroke width, monochrome',
+  },
+  {
+    id: 'logo',
+    name: 'Logo Illustrations',
+    prePrompt: 'A modern logo design featuring',
+    postPrompt: ', vector style, scalable, brand-appropriate',
+  },
+  {
+    id: 'premium',
+    name: 'Premium Illustrations',
+    prePrompt: 'A premium, high-quality illustration of',
+    postPrompt: ', detailed, artistic, publication-ready',
+  },
+];
+
+/**
+ * Load asset types from API (falls back to defaults)
+ */
+async function loadAssetTypes() {
+  try {
+    // Try to load from API (Issue #12 will implement this)
+    const result = await API.listAssetTypes?.();
+    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
+      state.assetTypes = result.data;
+    } else {
+      state.assetTypes = DEFAULT_ASSET_TYPES;
+    }
+  } catch (error) {
+    console.log('Using default asset types (API not available)');
+    state.assetTypes = DEFAULT_ASSET_TYPES;
+  }
+
+  populateAssetTypeSelector();
+  updatePromptBuilder();
+}
+
+/**
+ * Populate the asset type dropdown from state
+ */
+function populateAssetTypeSelector() {
+  const select = $('#asset-type');
+  if (!select) return;
+
+  select.innerHTML = state.assetTypes
+    .map((at) => `<option value="${at.id || at._id}">${at.name}</option>`)
+    .join('');
+
+  // Set initial current asset type
+  if (state.assetTypes.length > 0) {
+    state.currentAssetType = state.assetTypes[0];
+  }
+}
+
+/**
+ * Setup prompt builder event listeners
+ */
+function setupPromptBuilder() {
+  const assetTypeSelect = $('#asset-type');
+  const promptInput = $('#prompt');
+
+  if (assetTypeSelect) {
+    assetTypeSelect.addEventListener('change', () => {
+      const selectedId = assetTypeSelect.value;
+      state.currentAssetType = state.assetTypes.find(
+        (at) => (at.id || at._id) === selectedId
+      );
+      updatePromptBuilder();
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener('input', () => {
+      updateCombinedPromptPreview();
+    });
+  }
+}
+
+/**
+ * Update the prompt builder UI with current asset type's pre/post prompts
+ */
+function updatePromptBuilder() {
+  const preLabel = $('#pre-prompt-label');
+  const postLabel = $('#post-prompt-label');
+
+  if (!state.currentAssetType) {
+    if (preLabel) preLabel.textContent = '';
+    if (postLabel) postLabel.textContent = '';
+    updateCombinedPromptPreview();
+    return;
+  }
+
+  const prePrompt = state.currentAssetType.prePrompt || '';
+  const postPrompt = state.currentAssetType.postPrompt || '';
+
+  if (preLabel) preLabel.textContent = prePrompt;
+  if (postLabel) postLabel.textContent = postPrompt;
+
+  updateCombinedPromptPreview();
+}
+
+/**
+ * Update the combined prompt preview
+ */
+function updateCombinedPromptPreview() {
+  const preview = $('#combined-prompt-preview');
+  if (!preview) return;
+
+  const userPrompt = $('#prompt')?.value || '';
+  const combined = buildCombinedPrompt(userPrompt);
+
+  if (combined) {
+    preview.textContent = combined;
+  } else {
+    preview.textContent = '';
+  }
+}
+
+/**
+ * Build combined prompt from pre + user + post
+ * Concatenation Rules (from spec 3.2):
+ * - Empty pre/post: omit entirely (no leading/trailing space)
+ * - Formula: "{pre} {user} {post}".strip()
+ *
+ * @param {string} userPrompt - The user's input prompt
+ * @returns {string} The combined prompt
+ */
+function buildCombinedPrompt(userPrompt) {
+  const pre = state.currentAssetType?.prePrompt?.trim() || '';
+  const post = state.currentAssetType?.postPrompt?.trim() || '';
+  const user = userPrompt?.trim() || '';
+
+  // Build parts array, filtering out empty strings
+  const parts = [pre, user, post].filter((p) => p.length > 0);
+
+  // Join with single space and trim
+  return parts.join(' ').trim();
+}
+
+/**
+ * Get the combined prompt for generation
+ * @returns {string} The combined prompt ready for API
+ */
+function getCombinedPromptForGeneration() {
+  const userPrompt = $('#prompt')?.value || '';
+  return buildCombinedPrompt(userPrompt);
 }
 
 // === Generate Tab ===
@@ -186,6 +436,9 @@ function showResults(images) {
     `;
     $('#results-grid').appendChild(card);
   });
+
+  // Reload history sidebar to show the new generation
+  loadHistorySidebar();
 }
 
 async function cancelGeneration() {
@@ -247,99 +500,82 @@ function populateLoraSelector() {
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
 }
 
-// === History Tab ===
-async function loadHistory() {
+// === Asset Types ===
+async function loadAssetTypes() {
   try {
-    const result = await API.getHistory();
-    const items = result.data || result.items || result || [];
-    state.history = Array.isArray(items) ? items : [];
-    renderHistory();
+    const result = await API.getAssetTypes();
+    const items = result.data || result || [];
+    state.assetTypes = Array.isArray(items) ? items : [];
+    populateAssetTypeSelector();
+    updatePromptBuilder();
   } catch (error) {
-    console.error('Failed to load history:', error);
-    state.history = [];
-    renderHistory();
+    console.error('Failed to load asset types:', error);
+    state.assetTypes = [];
   }
 }
 
-function renderHistory() {
-  const list = $('#history-list');
-  
-  if (state.history.length === 0) {
-    list.innerHTML = '<div class="empty-state"><span class="empty-icon">📜</span><p>No generation history yet</p></div>';
-    return;
-  }
+function populateAssetTypeSelector() {
+  const select = $('#asset-type');
+  if (!select || state.assetTypes.length === 0) return;
 
-  list.innerHTML = state.history.map((item) => `
-    <div class="history-item">
-      <img class="history-item-thumb" src="${item.thumbnail || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"></svg>'}" alt="">
-      <div class="history-item-content">
-        <div class="history-item-prompt">${item.prompt}</div>
-        <div class="history-item-meta">${new Date(item.created_at).toLocaleString()} • ${item.status}</div>
-      </div>
-      <span class="status-badge ${item.status}">${item.status}</span>
-    </div>
-  `).join('');
+  select.innerHTML = state.assetTypes
+    .filter((at) => at.isActive)
+    .map((at) => `<option value="${at._id}">${at.name}</option>`)
+    .join('');
+
+  // Set current asset type
+  if (state.assetTypes.length > 0) {
+    state.currentAssetType = state.assetTypes.find((at) => at.isActive) || null;
+  }
 }
 
-function setupHistory() {
-  $('#history-filter').addEventListener('change', async (e) => {
-    const status = e.target.value || null;
-    try {
-      const result = await API.getHistory(50, status);
-      state.history = result.data || result.items || [];
-      renderHistory();
-    } catch (error) {
-      console.error('Filter failed:', error);
+// === Combined Prompt Builder (Issue #11) ===
+function setupPromptBuilder() {
+  const assetTypeSelect = $('#asset-type');
+  const promptInput = $('#prompt');
+
+  if (assetTypeSelect) {
+    assetTypeSelect.addEventListener('change', () => {
+      const selectedId = assetTypeSelect.value;
+      state.currentAssetType = state.assetTypes.find((at) => at._id === selectedId) || null;
+      updatePromptBuilder();
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener('input', updateCombinedPromptPreview);
+  }
+}
+
+function updatePromptBuilder() {
+  const prePromptLabel = $('#pre-prompt-label');
+  const postPromptLabel = $('#post-prompt-label');
+
+  if (state.currentAssetType) {
+    if (prePromptLabel) {
+      prePromptLabel.textContent = state.currentAssetType.prePrompt || '';
     }
-  });
-}
-
-// === Favorites Tab ===
-async function loadFavorites() {
-  try {
-    const result = await API.getFavorites();
-    const items = result.data || result.items || result || [];
-    state.favorites = Array.isArray(items) ? items : [];
-    renderFavorites();
-  } catch (error) {
-    console.error('Failed to load favorites:', error);
-    state.favorites = [];
-    renderFavorites();
-  }
-}
-
-function renderFavorites() {
-  const grid = $('#favorites-grid');
-  const empty = $('#favorites-empty');
-
-  if (state.favorites.length === 0) {
-    grid.classList.add('hidden');
-    empty.classList.remove('hidden');
-    return;
+    if (postPromptLabel) {
+      postPromptLabel.textContent = state.currentAssetType.postPrompt || '';
+    }
+  } else {
+    if (prePromptLabel) prePromptLabel.textContent = '';
+    if (postPromptLabel) postPromptLabel.textContent = '';
   }
 
-  empty.classList.add('hidden');
-  grid.classList.remove('hidden');
-  grid.innerHTML = state.favorites.map((fav) => `
-    <div class="image-card">
-      <img src="${API.baseUrl}${fav.image_url}" alt="">
-      <div class="image-overlay">
-        <button class="btn btn-small btn-secondary" onclick="downloadImage('${fav.image_url}')">⬇️</button>
-        <button class="btn btn-small btn-danger" onclick="removeFavorite('${fav.job_id}', ${fav.image_index})">❌</button>
-      </div>
-    </div>
-  `).join('');
+  updateCombinedPromptPreview();
 }
 
-async function removeFavorite(jobId, imageIndex) {
-  try {
-    await API.removeFavorite(jobId, imageIndex);
-    await loadFavorites();
-  } catch (error) {
-    alert('Failed to remove: ' + error.message);
-  }
-}
+function updateCombinedPromptPreview() {
+  const preview = $('#combined-prompt-preview');
+  const userPrompt = $('#prompt')?.value?.trim() || '';
 
-function setupFavorites() {
-  // No additional setup needed
+  if (!preview) return;
+
+  const pre = state.currentAssetType?.prePrompt || '';
+  const post = state.currentAssetType?.postPrompt || '';
+
+  // Build combined prompt following spec: "{pre} {user} {post}".strip()
+  const parts = [pre, userPrompt, post].filter((p) => p);
+  preview.textContent = parts.join(' ');
 }

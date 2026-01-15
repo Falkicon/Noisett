@@ -231,6 +231,199 @@ body {
   gap: var(--space-xl);
 }
 
+/* =============================================================================
+   User Mode Layout (History Sidebar + Generation Panel)
+   ============================================================================= */
+
+.user-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: var(--space-xl);
+  height: calc(100vh - 140px);
+}
+
+/* History Sidebar */
+.history-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.sidebar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.history-filter {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.filter-btn {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-btn:hover {
+  color: var(--text-primary);
+}
+
+.filter-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.history-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* History Sidebar Item */
+.history-sidebar-item {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--bg-tertiary);
+  border: var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.history-sidebar-item:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-primary);
+}
+
+.history-sidebar-item.active {
+  background: var(--bg-elevated);
+  border-color: var(--accent-primary);
+}
+
+.history-sidebar-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+}
+
+.history-sidebar-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+.history-sidebar-prompt {
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.history-sidebar-meta {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.history-sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-xs);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.history-sidebar-item:hover .history-sidebar-actions {
+  opacity: 1;
+}
+
+.history-action-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.history-action-btn:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.history-action-btn.favorited {
+  color: var(--warning);
+}
+
+.history-action-btn.delete:hover {
+  background: var(--danger);
+}
+
+/* Empty State Small (for sidebar) */
+.empty-state-small {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md);
+  color: var(--text-secondary);
+}
+
+.empty-icon-small {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: var(--space-sm);
+  opacity: 0.5;
+}
+
+.empty-state-small p {
+  font-size: 0.875rem;
+}
+
+/* Generation Panel */
+.generation-panel {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: var(--space-xl);
+}
+
 .panel-input {
   display: flex;
   flex-direction: column;
@@ -863,6 +1056,91 @@ code {
   max-width: 120px;
 }
 
+/* =============================================================================
+   Combined Prompt Builder Component
+   ============================================================================= */
+
+.prompt-builder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  position: relative;
+}
+
+.prompt-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  min-height: 1.5rem;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.prompt-label:empty {
+  display: none;
+}
+
+.prompt-label-pre {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.prompt-label-post {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+/* When pre-prompt is visible, adjust textarea border radius */
+.prompt-builder .prompt-label-pre:not(:empty) + textarea {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* When post-prompt is visible, adjust textarea border radius */
+.prompt-builder textarea:has(+ .prompt-label-post:not(:empty)) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.prompt-builder textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.prompt-builder-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-top: var(--space-xs);
+}
+
+.combined-prompt-preview {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.combined-prompt-preview:empty::before {
+  content: 'Combined prompt will appear here';
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
 /* Utilities */
 .hidden {
   display: none !important;
@@ -871,6 +1149,19 @@ code {
 /* Responsive */
 @media (max-width: 1024px) {
   .generate-layout, .loras-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .user-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .history-sidebar {
+    max-height: 300px;
+  }
+
+  .generation-panel {
     grid-template-columns: 1fr;
   }
 }
