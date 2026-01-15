@@ -59,6 +59,7 @@ const API = {
     return this.request('GET', path);
   },
 
+  // === Asset Types (Convex) - Issue #21 ===
   async getAssetTypes() {
     return ConvexAPI.listAssetTypes();
   },
@@ -71,7 +72,11 @@ const API = {
     return this.request('GET', '/api/models');
   },
 
+<<<<<<< HEAD
   // === Generations (Convex) ===
+=======
+  // === Generations (Convex) - Issue #21 ===
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
   async createGeneration(data) {
     return ConvexAPI.createGeneration(data);
   },
@@ -198,7 +203,11 @@ const ConvexAPI = {
     return this.request('POST', '/api/storage/generate-upload-url');
   },
 
+<<<<<<< HEAD
   // === Generations (Issue #22) ===
+=======
+  // === Generations (Issue #21) ===
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
   async listGenerations(favorite = undefined) {
     let path = '/api/generations/list';
     if (favorite !== undefined) {
@@ -207,6 +216,13 @@ const ConvexAPI = {
     return this.request('GET', path);
   },
 
+<<<<<<< HEAD
+=======
+  async createGeneration(data) {
+    return this.request('POST', '/api/generations/create', data);
+  },
+
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
   async toggleFavorite(id) {
     return this.request('POST', '/api/generations/toggle-favorite', { id });
   },
@@ -215,6 +231,7 @@ const ConvexAPI = {
     return this.request('DELETE', `/api/generations/delete?id=${id}`);
   },
 
+<<<<<<< HEAD
   async getGeneration(id) {
     return this.request('GET', `/api/generations/get?id=${id}`);
   },
@@ -224,6 +241,9 @@ const ConvexAPI = {
   },
 
   // === Asset Types ===
+=======
+  // === Asset Types (Issue #21) ===
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
   async listAssetTypes(activeOnly = true) {
     const path = activeOnly ? '/api/asset-types/list?activeOnly=true' : '/api/asset-types/list';
     return this.request('GET', path);
