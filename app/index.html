@@ -37,12 +37,19 @@
             
             <div class="form-group">
               <label for="prompt">Describe what you need</label>
-              <textarea 
-                id="prompt" 
-                placeholder="A modern illustration of a person collaborating with AI..."
-                rows="4"
-              ></textarea>
-              <span class="char-count"><span id="char-current">0</span>/500</span>
+              <div class="prompt-builder">
+                <span id="pre-prompt-label" class="prompt-label prompt-label-pre"></span>
+                <textarea
+                  id="prompt"
+                  placeholder="A modern illustration of a person collaborating with AI..."
+                  rows="4"
+                ></textarea>
+                <span id="post-prompt-label" class="prompt-label prompt-label-post"></span>
+              </div>
+              <div class="prompt-builder-footer">
+                <span id="combined-prompt-preview" class="combined-prompt-preview"></span>
+                <span class="char-count"><span id="char-current">0</span>/500</span>
+              </div>
             </div>
 
             <div class="form-row">

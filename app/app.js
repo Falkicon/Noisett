@@ -11,6 +11,8 @@ const state = {
   history: [],
   favorites: [],
   isConnected: false,
+  assetTypes: [], // Loaded from API or defaults
+  currentAssetType: null, // Currently selected asset type with pre/post prompts
 };
 
 // DOM Elements
@@ -21,11 +23,13 @@ const $$ = (selector) => document.querySelectorAll(selector);
 document.addEventListener('DOMContentLoaded', async () => {
   setupTabs();
   setupGenerate();
+  setupPromptBuilder();
   setupHistory();
   setupFavorites();
 
   await checkHealth();
-  await loadLoras(); // Still needed for LoRA selector in Generate tab
+  await loadAssetTypes();
+  await loadLoras();
 });
 
 // === Health Check ===
@@ -96,11 +100,20 @@ function setupGenerate() {
 }
 
 async function startGeneration() {
-  const prompt = $('#prompt').value.trim();
-  if (!prompt) {
+  const userPrompt = $('#prompt').value.trim();
+
+  // Validation per spec 3.2: userPrompt required, min 1 char, max 500 chars
+  if (!userPrompt) {
     alert('Please enter a prompt');
     return;
   }
+  if (userPrompt.length > 500) {
+    alert('Prompt must be 500 characters or less');
+    return;
+  }
+
+  // Build combined prompt using pre + user + post
+  const combinedPrompt = getCombinedPromptForGeneration();
 
   const assetType = $('#asset-type').value;
   const quality = $('#quality').value;
@@ -112,8 +125,14 @@ async function startGeneration() {
   $('#results-loading').classList.remove('hidden');
 
   try {
-    console.log('[DEBUG] Starting generation:', { prompt, assetType, quality, lora });
-    const result = await API.generate(prompt, assetType, quality, 1, lora);
+    console.log('[DEBUG] Starting generation:', {
+      userPrompt,
+      combinedPrompt,
+      assetType,
+      quality,
+      lora,
+    });
+    const result = await API.generate(combinedPrompt, assetType, quality, 1, lora);
     console.log('[DEBUG] Generate response:', JSON.stringify(result, null, 2));
     
     // Extract job ID from various possible structures
@@ -245,6 +264,171 @@ function populateLoraSelector() {
 
   select.innerHTML = '<option value="">None (Default)</option>' +
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
+}
+
+// === Asset Types & Prompt Builder ===
+
+/**
+ * Default asset types (used until API integration in Issue #12)
+ * Each asset type has pre/post prompts that wrap the user's input
+ */
+const DEFAULT_ASSET_TYPES = [
+  {
+    id: 'product',
+    name: 'Product Illustrations',
+    prePrompt: 'A clean, modern product illustration of',
+    postPrompt: ', minimalist style, white background, professional lighting',
+  },
+  {
+    id: 'icons',
+    name: 'Icons (Fluent 2)',
+    prePrompt: 'A Fluent 2 design system icon of',
+    postPrompt: ', simple shapes, consistent stroke width, monochrome',
+  },
+  {
+    id: 'logo',
+    name: 'Logo Illustrations',
+    prePrompt: 'A modern logo design featuring',
+    postPrompt: ', vector style, scalable, brand-appropriate',
+  },
+  {
+    id: 'premium',
+    name: 'Premium Illustrations',
+    prePrompt: 'A premium, high-quality illustration of',
+    postPrompt: ', detailed, artistic, publication-ready',
+  },
+];
+
+/**
+ * Load asset types from API (falls back to defaults)
+ */
+async function loadAssetTypes() {
+  try {
+    // Try to load from API (Issue #12 will implement this)
+    const result = await API.listAssetTypes?.();
+    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
+      state.assetTypes = result.data;
+    } else {
+      state.assetTypes = DEFAULT_ASSET_TYPES;
+    }
+  } catch (error) {
+    console.log('Using default asset types (API not available)');
+    state.assetTypes = DEFAULT_ASSET_TYPES;
+  }
+
+  populateAssetTypeSelector();
+  updatePromptBuilder();
+}
+
+/**
+ * Populate the asset type dropdown from state
+ */
+function populateAssetTypeSelector() {
+  const select = $('#asset-type');
+  if (!select) return;
+
+  select.innerHTML = state.assetTypes
+    .map((at) => `<option value="${at.id || at._id}">${at.name}</option>`)
+    .join('');
+
+  // Set initial current asset type
+  if (state.assetTypes.length > 0) {
+    state.currentAssetType = state.assetTypes[0];
+  }
+}
+
+/**
+ * Setup prompt builder event listeners
+ */
+function setupPromptBuilder() {
+  const assetTypeSelect = $('#asset-type');
+  const promptInput = $('#prompt');
+
+  if (assetTypeSelect) {
+    assetTypeSelect.addEventListener('change', () => {
+      const selectedId = assetTypeSelect.value;
+      state.currentAssetType = state.assetTypes.find(
+        (at) => (at.id || at._id) === selectedId
+      );
+      updatePromptBuilder();
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener('input', () => {
+      updateCombinedPromptPreview();
+    });
+  }
+}
+
+/**
+ * Update the prompt builder UI with current asset type's pre/post prompts
+ */
+function updatePromptBuilder() {
+  const preLabel = $('#pre-prompt-label');
+  const postLabel = $('#post-prompt-label');
+
+  if (!state.currentAssetType) {
+    if (preLabel) preLabel.textContent = '';
+    if (postLabel) postLabel.textContent = '';
+    updateCombinedPromptPreview();
+    return;
+  }
+
+  const prePrompt = state.currentAssetType.prePrompt || '';
+  const postPrompt = state.currentAssetType.postPrompt || '';
+
+  if (preLabel) preLabel.textContent = prePrompt;
+  if (postLabel) postLabel.textContent = postPrompt;
+
+  updateCombinedPromptPreview();
+}
+
+/**
+ * Update the combined prompt preview
+ */
+function updateCombinedPromptPreview() {
+  const preview = $('#combined-prompt-preview');
+  if (!preview) return;
+
+  const userPrompt = $('#prompt')?.value || '';
+  const combined = buildCombinedPrompt(userPrompt);
+
+  if (combined) {
+    preview.textContent = combined;
+  } else {
+    preview.textContent = '';
+  }
+}
+
+/**
+ * Build combined prompt from pre + user + post
+ * Concatenation Rules (from spec 3.2):
+ * - Empty pre/post: omit entirely (no leading/trailing space)
+ * - Formula: "{pre} {user} {post}".strip()
+ *
+ * @param {string} userPrompt - The user's input prompt
+ * @returns {string} The combined prompt
+ */
+function buildCombinedPrompt(userPrompt) {
+  const pre = state.currentAssetType?.prePrompt?.trim() || '';
+  const post = state.currentAssetType?.postPrompt?.trim() || '';
+  const user = userPrompt?.trim() || '';
+
+  // Build parts array, filtering out empty strings
+  const parts = [pre, user, post].filter((p) => p.length > 0);
+
+  // Join with single space and trim
+  return parts.join(' ').trim();
+}
+
+/**
+ * Get the combined prompt for generation
+ * @returns {string} The combined prompt ready for API
+ */
+function getCombinedPromptForGeneration() {
+  const userPrompt = $('#prompt')?.value || '';
+  return buildCombinedPrompt(userPrompt);
 }
 
 // === History Tab ===
