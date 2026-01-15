@@ -433,10 +433,13 @@ function showError(title, message) {
   alert(`${title}: ${message}`);
 }
 
-async function deleteAssetType() {
+function deleteAssetType() {
   if (!state.selectedAssetType) return;
   if (!confirm(`Delete "${state.selectedAssetType.name}"? This will deactivate the asset type.`)) return;
+  performDeleteAssetType();
+}
 
+async function performDeleteAssetType() {
   const result = await API.request('DELETE', `/api/asset-types/delete?id=${state.selectedAssetType._id}`);
   if (result.success) {
     await loadAssetTypes();
@@ -615,38 +618,54 @@ function handleDrop(e) {
   handleFiles(files);
 }
 
-async function handleFiles(files) {
+function handleFiles(files) {
   if (!state.selectedLora) return;
 
   clearUploadPreview();
 
+  // Prepare preview items synchronously
+  const uploadItems = [];
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const div = createUploadPreviewItem();
+    previewFile(file, div);
+    uploadItems.push({ file, div });
+  }
+
+  // Process uploads asynchronously
+  processFileUploads(uploadItems);
+}
+
+async function processFileUploads(uploadItems) {
   let uploadedCount = 0;
   const loraId = state.selectedLora._id;
 
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
-
-    // Preview immediately
-    const div = createUploadPreviewItem();
-    previewFile(file, div);
-
+  for (const { file, div } of uploadItems) {
     const result = await uploadFileToStorage(loraId, file);
     if (result.success) {
       uploadedCount++;
-      div.classList.add('uploaded');
+      markUploadSuccess(div);
     } else {
       console.error(`Failed to upload ${file.name}:`, result.error?.message);
-      div.classList.add('upload-error');
-      div.title = result.error?.message || 'Upload failed';
+      markUploadError(div, result.error?.message || 'Upload failed');
     }
   }
 
-  console.log(`${uploadedCount}/${files.length} files uploaded to Convex`);
+  console.log(`${uploadedCount}/${uploadItems.length} files uploaded to Convex`);
 
   // Refresh LoRA to get updated image count
   if (uploadedCount > 0) {
     await refreshSelectedLora(loraId);
   }
+}
+
+function markUploadSuccess(div) {
+  div.classList.add('uploaded');
+}
+
+function markUploadError(div, message) {
+  div.classList.add('upload-error');
+  div.title = message;
 }
 
 function clearUploadPreview() {
@@ -706,15 +725,18 @@ async function refreshSelectedLora(loraId) {
   }
 }
 
-async function startTraining() {
+function startTraining() {
   if (!state.selectedLora) return;
   alert('Training would start here. Requires REPLICATE_API_TOKEN to be configured.');
 }
 
-async function deleteLora() {
+function deleteLora() {
   if (!state.selectedLora) return;
   if (!confirm(`Delete "${state.selectedLora.name}"?`)) return;
+  performDeleteLora();
+}
 
+async function performDeleteLora() {
   const result = await API.deleteLora(state.selectedLora._id);
   if (result.success) {
     state.selectedLora = null;

@@ -215,7 +215,7 @@ async function toggleHistoryFavorite(id) {
   }
 }
 
-async function regenerateFromHistory(id) {
+function regenerateFromHistory(id) {
   // Find the history item
   const item = state.history.find((h) => (h._id || h.id) === id);
   if (!item) {
@@ -223,6 +223,14 @@ async function regenerateFromHistory(id) {
     return;
   }
 
+  // Populate form with history item data
+  populateRegenerateForm(item);
+
+  // Start generation with the same parameters
+  startGeneration();
+}
+
+function populateRegenerateForm(item) {
   // Populate the prompt field with the original prompt
   const promptInput = $('#prompt');
   if (promptInput) {
@@ -239,16 +247,20 @@ async function regenerateFromHistory(id) {
       assetTypeSelect.dispatchEvent(new Event('change'));
     }
   }
-
-  // Start generation with the same parameters
-  startGeneration();
 }
 
-async function deleteHistoryItem(id) {
-  if (!confirm('Are you sure you want to delete this generation?')) {
+function deleteHistoryItem(id) {
+  if (!confirmDelete('generation')) {
     return;
   }
+  performDeleteHistoryItem(id);
+}
 
+function confirmDelete(itemType) {
+  return confirm(`Are you sure you want to delete this ${itemType}?`);
+}
+
+async function performDeleteHistoryItem(id) {
   const result = await API.deleteGeneration(id);
   if (result.success) {
     // Remove from local state
@@ -460,25 +472,47 @@ function setupGenerate() {
   cancelBtn.addEventListener('click', cancelGeneration);
 }
 
-async function startGeneration() {
-  const userPrompt = $('#prompt').value.trim();
+/**
+ * Read generation form inputs from DOM.
+ * @returns {{ userPrompt: string, assetTypeId: string, quality: string, lora: string|null }}
+ */
+function getGenerationFormValues() {
+  const assetType = state.currentAssetType;
+  return {
+    userPrompt: $('#prompt').value.trim(),
+    assetTypeId: $('#asset-type').value,
+    quality: assetType?.qualityPreset || $('#quality').value,
+    lora: assetType?.loraId || $('#lora-select').value || null,
+  };
+}
+
+/**
+ * Validate generation form and show alert if invalid.
+ * @returns {boolean}
+ */
+function validateGenerationForm(userPrompt) {
   if (!userPrompt) {
     alert('Please enter a prompt');
+    return false;
+  }
+  return true;
+}
+
+function startGeneration() {
+  const formValues = getGenerationFormValues();
+  if (!validateGenerationForm(formValues.userPrompt)) {
     return;
   }
+  showGenerationLoading();
+  performGeneration(formValues);
+}
 
-  // Get current asset type settings
-  const assetTypeId = $('#asset-type').value;
+async function performGeneration(formValues) {
+  const { userPrompt, assetTypeId, quality, lora } = formValues;
   const assetType = state.currentAssetType;
 
   // Build combined prompt from Asset Type pre/post prompts
   const combinedPrompt = buildCombinedPrompt(userPrompt);
-
-  // Get quality - use Asset Type's qualityPreset if available, else UI selection
-  const quality = assetType?.qualityPreset || $('#quality').value;
-
-  // Get LoRA - use Asset Type's loraId if available, else UI selection
-  const lora = assetType?.loraId || $('#lora-select').value || null;
 
   // Store generation context for saving to history after completion
   state.pendingGeneration = {
@@ -486,9 +520,6 @@ async function startGeneration() {
     userPrompt,
     combinedPrompt,
   };
-
-  // Show loading
-  showGenerationLoading();
 
   console.log('[DEBUG] Starting generation:', {
     userPrompt,
@@ -505,9 +536,7 @@ async function startGeneration() {
 
   if (!result.success) {
     console.error('[DEBUG] Generation error:', result.error);
-    showError('Generation failed', result.error?.message || 'Unknown error');
-    resetGenerateUI();
-    state.pendingGeneration = null;
+    handleGenerationError('Generation failed', result.error?.message || 'Unknown error');
     return;
   }
 
@@ -516,12 +545,16 @@ async function startGeneration() {
   console.log('[DEBUG] Job ID extracted:', state.currentJob);
 
   if (!state.currentJob) {
-    showError('Generation failed', 'No job ID in response');
-    resetGenerateUI();
-    state.pendingGeneration = null;
+    handleGenerationError('Generation failed', 'No job ID in response');
     return;
   }
   pollJobStatus();
+}
+
+function handleGenerationError(title, message) {
+  showError(title, message);
+  resetGenerateUI();
+  state.pendingGeneration = null;
 }
 
 function showGenerationLoading() {
@@ -567,7 +600,12 @@ function updateProgress(progress) {
   $('#progress-fill').style.width = `${progress}%`;
 }
 
-async function showResults(images) {
+function showResults(images) {
+  renderResultsGrid(images);
+  finalizeGeneration(images);
+}
+
+function renderResultsGrid(images) {
   $('#results-loading').classList.add('hidden');
   $('#results-grid').classList.remove('hidden');
   $('#results-grid').innerHTML = '';
@@ -586,7 +624,9 @@ async function showResults(images) {
     `;
     $('#results-grid').appendChild(card);
   });
+}
 
+async function finalizeGeneration(images) {
   // Save generation record to Convex
   if (state.pendingGeneration) {
     await saveGenerationToHistory(images);
