@@ -700,10 +700,8 @@ class ReplicateGenerator(ImageGenerator):
         for i in range(count):
             seed = random.randint(1, 999999)
 
-            # Debug: print what we're doing
-            print(f"[REPLICATE+REF] Using model: {replicate_model}")
-            print(f"[REPLICATE+REF] Reference images: {len(reference_urls)}")
-            print(f"[REPLICATE+REF] Prompt: {enhanced_prompt[:50]}...")
+            # Single debug line for reference generation
+            print(f"[REPLICATE+REF] {replicate_model} with {len(reference_urls)} refs")
 
             # Build model-specific input params
             model_lower = replicate_model.lower()
@@ -754,8 +752,6 @@ class ReplicateGenerator(ImageGenerator):
                     "num_inference_steps": num_steps,
                     "seed": seed,
                 }
-
-            print(f"[REPLICATE+REF] Input params: {input_params}")
 
             # Run prediction
             output = await replicate.async_run(

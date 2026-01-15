@@ -195,14 +195,10 @@ async def process_job(job_id: str):
             model_config = None
 
             # Try to get asset type reference images from Convex
-            debug_log(f"[PROCESS_JOB] Checking for reference images, asset_type_id={getattr(job, 'asset_type_id', None)}")
             if hasattr(job, 'asset_type_id') and job.asset_type_id:
-                debug_log(f"[PROCESS_JOB] Fetching asset type {job.asset_type_id} from Convex")
                 try:
                     from src.core.convex_client import get_convex_client
-                    debug_log("[PROCESS_JOB] Getting Convex client...")
                     convex_client = get_convex_client()
-                    debug_log("[PROCESS_JOB] Fetching asset type data...")
                     asset_type_data = await convex_client.get_asset_type(job.asset_type_id)
                     if asset_type_data and asset_type_data.get("referenceImages"):
                         # Get model config to check if it supports reference images
@@ -211,17 +207,16 @@ async def process_job(job_id: str):
                         model_config = models.get(asset_type_data.get("model", ""))
 
                         if model_config and model_config.get("capabilities", {}).get("maxReferenceImages", 0) > 0:
-                            debug_log(f"[PROCESS_JOB] Model supports reference images, fetching URLs...")
                             # Fetch URLs for reference images
                             for storage_id in asset_type_data["referenceImages"]:
                                 try:
                                     url = await convex_client.get_storage_url(storage_id)
                                     if url:
                                         reference_urls.append(url)
-                                        debug_log(f"[PROCESS_JOB] Got reference image URL: {url[:50]}...")
                                 except Exception as e:
                                     debug_log(f"[PROCESS_JOB] Failed to get reference image URL: {e}")
-                            debug_log(f"[PROCESS_JOB] Found {len(reference_urls)} reference images")
+                            if reference_urls:
+                                debug_log(f"[PROCESS_JOB] Using {len(reference_urls)} reference images")
                 except Exception as e:
                     debug_log(f"[PROCESS_JOB] Failed to get asset type for reference images: {e}")
 
