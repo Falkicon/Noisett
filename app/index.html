@@ -15,9 +15,6 @@
         <h1>Noisett</h1>
       </div>
       <nav class="nav">
-        <button class="nav-tab active" data-tab="generate">Generate</button>
-        <button class="nav-tab" data-tab="history">History</button>
-        <button class="nav-tab" data-tab="favorites">Favorites</button>
         <a href="director.html" class="nav-tab">Director</a>
       </nav>
       <div class="header-status">
@@ -28,21 +25,46 @@
 
     <!-- Main Content -->
     <main class="main">
-      <!-- Generate Tab -->
-      <section id="tab-generate" class="tab-content active">
-        <div class="generate-layout">
+      <div class="user-layout">
+        <!-- History Sidebar -->
+        <aside class="history-sidebar panel">
+          <div class="sidebar-header">
+            <h2 class="sidebar-title">History</h2>
+            <div class="history-filter">
+              <button id="filter-all" class="filter-btn active" data-filter="all">All</button>
+              <button id="filter-favorites" class="filter-btn" data-filter="favorites">Favorites</button>
+            </div>
+          </div>
+          <div id="history-list" class="history-sidebar-list">
+            <!-- History items populated dynamically -->
+          </div>
+          <div id="history-empty" class="empty-state-small">
+            <span class="empty-icon-small">🖼️</span>
+            <p>No generations yet</p>
+          </div>
+        </aside>
+
+        <!-- Main Generation Panel -->
+        <div class="generation-panel">
           <!-- Input Panel -->
           <div class="panel panel-input">
             <h2 class="panel-title">Create Assets</h2>
-            
+
             <div class="form-group">
               <label for="prompt">Describe what you need</label>
-              <textarea 
-                id="prompt" 
-                placeholder="A modern illustration of a person collaborating with AI..."
-                rows="4"
-              ></textarea>
-              <span class="char-count"><span id="char-current">0</span>/500</span>
+              <div class="prompt-builder">
+                <span id="pre-prompt-label" class="prompt-label prompt-label-pre"></span>
+                <textarea
+                  id="prompt"
+                  placeholder="A modern illustration of a person collaborating with AI..."
+                  rows="4"
+                ></textarea>
+                <span id="post-prompt-label" class="prompt-label prompt-label-post"></span>
+              </div>
+              <div class="prompt-builder-footer">
+                <span id="combined-prompt-preview" class="combined-prompt-preview"></span>
+                <span class="char-count"><span id="char-current">0</span>/500</span>
+              </div>
             </div>
 
             <div class="form-row">
@@ -98,38 +120,7 @@
             </div>
           </div>
         </div>
-      </section>
-
-      <!-- History Tab -->
-      <section id="tab-history" class="tab-content hidden">
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Generation History</h2>
-            <select id="history-filter" class="filter-select">
-              <option value="">All</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-            </select>
-          </div>
-          <div id="history-list" class="history-list">
-            <!-- History items populated dynamically -->
-          </div>
-        </div>
-      </section>
-
-      <!-- Favorites Tab -->
-      <section id="tab-favorites" class="tab-content hidden">
-        <div class="panel">
-          <h2 class="panel-title">Favorites</h2>
-          <div id="favorites-grid" class="image-grid">
-            <!-- Favorites populated dynamically -->
-          </div>
-          <div id="favorites-empty" class="empty-state hidden">
-            <span class="empty-icon">⭐</span>
-            <p>No favorites yet. Star images you want to keep!</p>
-          </div>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
 
