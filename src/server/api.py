@@ -626,6 +626,23 @@ async def list_training_images(lora_id: str):
 # --- Model Endpoints ---
 
 
+@app.get("/api/models/list")
+async def list_models_endpoint():
+    """List available models with settings (Director Mode).
+
+    Returns model registry configuration for dynamic form generation.
+    Part of Director Mode Phase 1 implementation.
+    """
+    from src.ml.registry import list_models
+
+    try:
+        models = list_models()
+        return {"success": True, "data": models}
+    except Exception as e:
+        logging.error(f"Failed to load model registry: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load model registry: {str(e)}")
+
+
 @app.get("/api/models")
 async def get_models():
     """List available AI models and their capabilities."""
