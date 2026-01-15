@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../convex/webhookEvents.ts"],
+  "sourcesContent": ["import { v } from \"convex/values\";\r\nimport { internalMutation, internalQuery } from \"./_generated/server\";\r\n\r\n// Create a new webhook event record\r\nexport const create = internalMutation({\r\n  args: {\r\n    eventId: v.string(),\r\n    processedAt: v.number(),\r\n    eventType: v.string(),\r\n  },\r\n  handler: async (ctx, args) => {\r\n    return await ctx.db.insert(\"webhookEvents\", args);\r\n  },\r\n});\r\n\r\n// Get webhook event by event ID\r\nexport const byEventId = internalQuery({\r\n  args: { eventId: v.string() },\r\n  handler: async (ctx, args) => {\r\n    return await ctx.db\r\n      .query(\"webhookEvents\")\r\n      .withIndex(\"by_event_id\", (q) => q.eq(\"eventId\", args.eventId))\r\n      .first();\r\n  },\r\n});"],
+  "mappings": ";;;;;;;;AAIO,IAAMA,IAASC,EAAiB;AAAA,EACrC,MAAM;AAAA,IACJ,SAASC,EAAE,OAAO;AAAA,IAClB,aAAaA,EAAE,OAAO;AAAA,IACtB,WAAWA,EAAE,OAAO;AAAA,EACtB;AAAA,EACA,SAAS,gBAAAC,EAAA,OAAOC,GAAKC,MACZ,MAAMD,EAAI,GAAG,OAAO,iBAAiBC,CAAI,GADzC;AAGX,CAAC,GAGYC,IAAYC,EAAc;AAAA,EACrC,MAAM,EAAE,SAASL,EAAE,OAAO,EAAE;AAAA,EAC5B,SAAS,gBAAAC,EAAA,OAAOC,GAAKC,MACZ,MAAMD,EAAI,GACd,MAAM,eAAe,EACrB,UAAU,eAAe,CAACI,MAAMA,EAAE,GAAG,WAAWH,EAAK,OAAO,CAAC,EAC7D,MAAM,GAJF;AAMX,CAAC;",
+  "names": ["create", "internalMutation", "v", "__name", "ctx", "args", "byEventId", "internalQuery", "q"]
+}

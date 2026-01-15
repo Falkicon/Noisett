@@ -12,8 +12,12 @@ const state = {
   isConnected: false,
   assetTypes: [], // Loaded from API
   currentAssetType: null, // Currently selected asset type with pre/post prompts
+<<<<<<< HEAD
   pendingGeneration: null, // Stores generation context for saving to history (Issue #21)
   isDirector: false, // Director mode flag (Issue #23)
+=======
+  pendingGeneration: null, // Stores generation context for saving to history
+>>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
 };
 
 // DOM Elements
@@ -120,7 +124,7 @@ function setupHistorySidebar() {
 
 async function loadHistorySidebar() {
   try {
-    // Load from Convex generations API (Issue #21)
+    // Load from Convex generations API
     const result = await API.listGenerations();
     const items = result || [];
     state.history = Array.isArray(items) ? items : [];
@@ -195,7 +199,11 @@ function formatRelativeTime(timestamp) {
   return date.toLocaleDateString();
 }
 
+<<<<<<< HEAD
 // History Actions (Issue #22)
+=======
+// History Actions
+>>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
 async function toggleHistoryFavorite(id) {
   try {
     await API.toggleGenerationFavorite(id);
@@ -299,9 +307,22 @@ const DEFAULT_ASSET_TYPES = [
 
 /**
  * Load asset types from API (falls back to defaults)
+ * Automatically seeds default Asset Types on first run (Issue #24)
  */
 async function loadAssetTypes() {
   try {
+<<<<<<< HEAD
+=======
+    // First, check if we need to seed default Asset Types
+    const needsSeedResult = await ConvexAPI.needsSeedAssetTypes();
+    if (needsSeedResult?.needsSeed) {
+      console.log('First run detected - seeding default Asset Types...');
+      const seedResult = await ConvexAPI.seedAssetTypes();
+      console.log('Seed result:', seedResult.message);
+    }
+
+    // Now load the Asset Types
+>>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
     const result = await API.getAssetTypes();
     const items = result?.data || result || [];
     // Filter to only active items
@@ -451,7 +472,7 @@ async function startGeneration() {
     return;
   }
 
-  // Get current asset type settings (Issue #21)
+  // Get current asset type settings
   const assetTypeId = $('#asset-type').value;
   const assetType = state.currentAssetType;
 
@@ -562,7 +583,7 @@ async function showResults(images) {
     $('#results-grid').appendChild(card);
   });
 
-  // Save generation record to Convex (Issue #21)
+  // Save generation record to Convex
   if (state.pendingGeneration) {
     try {
       const generationData = {

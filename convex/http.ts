@@ -5,6 +5,31 @@ import { internal } from "./_generated/api";
 const http = httpRouter();
 
 // Asset Types endpoints
+
+// Seed default Asset Types (idempotent - safe to call multiple times)
+http.route({
+  path: "/api/asset-types/seed",
+  method: "POST",
+  handler: httpAction(async (ctx) => {
+    const result = await ctx.runMutation(internal.assetTypes.seed, {});
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
+// Check if Asset Types need seeding (read-only)
+http.route({
+  path: "/api/asset-types/needs-seed",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    const result = await ctx.runQuery(internal.assetTypes.needsSeed, {});
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }),
+});
+
 http.route({
   path: "/api/asset-types/create",
   method: "POST",
