@@ -68,8 +68,9 @@ function setupHistorySidebar() {
 
 async function loadHistorySidebar() {
   try {
-    const result = await API.getHistory();
-    const items = result.data || result.items || result || [];
+    // Load from Convex generations API (Issue #21)
+    const result = await API.listGenerations();
+    const items = result || [];
     state.history = Array.isArray(items) ? items : [];
     renderHistorySidebar();
   } catch (error) {
@@ -142,20 +143,70 @@ function formatRelativeTime(timestamp) {
   return date.toLocaleDateString();
 }
 
-// History Actions (to be connected to API in Issue #13)
+// History Actions (Issue #22)
 async function toggleHistoryFavorite(id) {
-  console.log('Toggle favorite:', id);
-  // TODO: Implement in Issue #13
+  try {
+    await ConvexAPI.toggleFavorite(id);
+    // Update local state
+    const item = state.history.find((h) => (h._id || h.id) === id);
+    if (item) {
+      item.isFavorite = !item.isFavorite;
+    }
+    renderHistorySidebar();
+  } catch (error) {
+    console.error('Failed to toggle favorite:', error);
+    alert('Failed to toggle favorite: ' + error.message);
+  }
 }
 
 async function regenerateFromHistory(id) {
-  console.log('Regenerate:', id);
-  // TODO: Implement in Issue #13
+  try {
+    // Find the history item
+    const item = state.history.find((h) => (h._id || h.id) === id);
+    if (!item) {
+      alert('Generation not found in history');
+      return;
+    }
+
+    // Populate the prompt field with the original prompt
+    const promptInput = $('#prompt');
+    if (promptInput) {
+      promptInput.value = item.userPrompt || item.prompt || '';
+      // Trigger input event to update char count and preview
+      promptInput.dispatchEvent(new Event('input'));
+    }
+
+    // Set the asset type if available
+    if (item.assetTypeId) {
+      const assetTypeSelect = $('#asset-type');
+      if (assetTypeSelect) {
+        assetTypeSelect.value = item.assetTypeId;
+        assetTypeSelect.dispatchEvent(new Event('change'));
+      }
+    }
+
+    // Start generation with the same parameters
+    startGeneration();
+  } catch (error) {
+    console.error('Failed to regenerate:', error);
+    alert('Failed to regenerate: ' + error.message);
+  }
 }
 
 async function deleteHistoryItem(id) {
-  console.log('Delete:', id);
-  // TODO: Implement in Issue #13
+  if (!confirm('Are you sure you want to delete this generation?')) {
+    return;
+  }
+
+  try {
+    await ConvexAPI.deleteGeneration(id);
+    // Remove from local state
+    state.history = state.history.filter((h) => (h._id || h.id) !== id);
+    renderHistorySidebar();
+  } catch (error) {
+    console.error('Failed to delete generation:', error);
+    alert('Failed to delete: ' + error.message);
+  }
 }
 
 // === Asset Types & Prompt Builder ===
@@ -196,11 +247,18 @@ const DEFAULT_ASSET_TYPES = [
  */
 async function loadAssetTypes() {
   try {
-    // Try to load from API (Issue #12 will implement this)
-    const result = await API.listAssetTypes?.();
-    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
-      state.assetTypes = result.data;
+    // Try to load from API
+    const result = await API.getAssetTypes();
+    const items = result?.data || result || [];
+    // Filter to only active items if they have isActive property
+    const activeItems = Array.isArray(items)
+      ? items.filter((at) => at.isActive !== false)
+      : [];
+
+    if (activeItems.length > 0) {
+      state.assetTypes = activeItems;
     } else {
+      console.log('No active asset types from API, using defaults');
       state.assetTypes = DEFAULT_ASSET_TYPES;
     }
   } catch (error) {
@@ -346,15 +404,31 @@ function setupGenerate() {
 }
 
 async function startGeneration() {
-  const prompt = $('#prompt').value.trim();
-  if (!prompt) {
+  const userPrompt = $('#prompt').value.trim();
+  if (!userPrompt) {
     alert('Please enter a prompt');
     return;
   }
 
-  const assetType = $('#asset-type').value;
-  const quality = $('#quality').value;
-  const lora = $('#lora-select').value || null;
+  // Get current asset type settings (Issue #21)
+  const assetTypeId = $('#asset-type').value;
+  const assetType = state.currentAssetType;
+
+  // Build combined prompt from Asset Type pre/post prompts
+  const combinedPrompt = buildCombinedPrompt(userPrompt);
+
+  // Get quality - use Asset Type's qualityPreset if available, else UI selection
+  const quality = assetType?.qualityPreset || $('#quality').value;
+
+  // Get LoRA - use Asset Type's loraId if available, else UI selection
+  const lora = assetType?.loraId || $('#lora-select').value || null;
+
+  // Store generation context for saving to history after completion
+  state.pendingGeneration = {
+    assetTypeId: assetType?._id || assetTypeId,
+    userPrompt,
+    combinedPrompt,
+  };
 
   // Show loading
   $('#results-empty').classList.add('hidden');
@@ -362,14 +436,23 @@ async function startGeneration() {
   $('#results-loading').classList.remove('hidden');
 
   try {
-    console.log('[DEBUG] Starting generation:', { prompt, assetType, quality, lora });
-    const result = await API.generate(prompt, assetType, quality, 1, lora);
+    console.log('[DEBUG] Starting generation:', {
+      userPrompt,
+      combinedPrompt,
+      assetTypeId,
+      quality,
+      lora,
+      modelSettings: assetType?.modelSettings,
+    });
+
+    // Use combined prompt for generation (applies Asset Type's pre/post prompts)
+    const result = await API.generate(combinedPrompt, assetTypeId, quality, 1, lora);
     console.log('[DEBUG] Generate response:', JSON.stringify(result, null, 2));
-    
+
     // Extract job ID from various possible structures
     state.currentJob = result.data?.job?.id || result.data?.job_id || result.job_id || result.job?.id;
     console.log('[DEBUG] Job ID extracted:', state.currentJob);
-    
+
     if (!state.currentJob) {
       throw new Error('No job ID in response');
     }
@@ -378,6 +461,7 @@ async function startGeneration() {
     console.error('[DEBUG] Generation error:', error);
     showError('Generation failed', error.message);
     resetGenerateUI();
+    state.pendingGeneration = null;
   }
 }
 
@@ -500,82 +584,3 @@ function populateLoraSelector() {
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
 }
 
-// === Asset Types ===
-async function loadAssetTypes() {
-  try {
-    const result = await API.getAssetTypes();
-    const items = result.data || result || [];
-    state.assetTypes = Array.isArray(items) ? items : [];
-    populateAssetTypeSelector();
-    updatePromptBuilder();
-  } catch (error) {
-    console.error('Failed to load asset types:', error);
-    state.assetTypes = [];
-  }
-}
-
-function populateAssetTypeSelector() {
-  const select = $('#asset-type');
-  if (!select || state.assetTypes.length === 0) return;
-
-  select.innerHTML = state.assetTypes
-    .filter((at) => at.isActive)
-    .map((at) => `<option value="${at._id}">${at.name}</option>`)
-    .join('');
-
-  // Set current asset type
-  if (state.assetTypes.length > 0) {
-    state.currentAssetType = state.assetTypes.find((at) => at.isActive) || null;
-  }
-}
-
-// === Combined Prompt Builder (Issue #11) ===
-function setupPromptBuilder() {
-  const assetTypeSelect = $('#asset-type');
-  const promptInput = $('#prompt');
-
-  if (assetTypeSelect) {
-    assetTypeSelect.addEventListener('change', () => {
-      const selectedId = assetTypeSelect.value;
-      state.currentAssetType = state.assetTypes.find((at) => at._id === selectedId) || null;
-      updatePromptBuilder();
-    });
-  }
-
-  if (promptInput) {
-    promptInput.addEventListener('input', updateCombinedPromptPreview);
-  }
-}
-
-function updatePromptBuilder() {
-  const prePromptLabel = $('#pre-prompt-label');
-  const postPromptLabel = $('#post-prompt-label');
-
-  if (state.currentAssetType) {
-    if (prePromptLabel) {
-      prePromptLabel.textContent = state.currentAssetType.prePrompt || '';
-    }
-    if (postPromptLabel) {
-      postPromptLabel.textContent = state.currentAssetType.postPrompt || '';
-    }
-  } else {
-    if (prePromptLabel) prePromptLabel.textContent = '';
-    if (postPromptLabel) postPromptLabel.textContent = '';
-  }
-
-  updateCombinedPromptPreview();
-}
-
-function updateCombinedPromptPreview() {
-  const preview = $('#combined-prompt-preview');
-  const userPrompt = $('#prompt')?.value?.trim() || '';
-
-  if (!preview) return;
-
-  const pre = state.currentAssetType?.prePrompt || '';
-  const post = state.currentAssetType?.postPrompt || '';
-
-  // Build combined prompt following spec: "{pre} {user} {post}".strip()
-  const parts = [pre, userPrompt, post].filter((p) => p);
-  preview.textContent = parts.join(' ');
-}
