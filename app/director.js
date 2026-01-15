@@ -445,14 +445,19 @@ function getAssetTypeFormName() {
 }
 
 function collectAssetTypeFormData(name) {
+  const modelId = $('#asset-type-model').value;
+  const model = state.models.find((m) => m.id === modelId);
+  const supportsLora = model?.capabilities?.supportsLora || false;
+
   return {
     name,
     description: $('#asset-type-description').value.trim() || undefined,
     prePrompt: $('#asset-type-pre-prompt').value.trim(),
     postPrompt: $('#asset-type-post-prompt').value.trim(),
-    model: $('#asset-type-model').value,
+    model: modelId,
     modelSettings: getModelSettings(),
-    loraId: $('#asset-type-lora').value || undefined,
+    // Clear loraId if model doesn't support LoRA
+    loraId: supportsLora ? ($('#asset-type-lora').value || undefined) : undefined,
     qualityPreset: $('#asset-type-quality').value || undefined,
     isActive: $('#asset-type-active').checked,
   };
