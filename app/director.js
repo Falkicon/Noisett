@@ -374,7 +374,12 @@ function showEditor() {
   $('#asset-type-description').value = at?.description || '';
   $('#asset-type-pre-prompt').value = at?.prePrompt || '';
   $('#asset-type-post-prompt').value = at?.postPrompt || '';
-  $('#asset-type-model').value = at?.model || (state.models[0]?.id || '');
+  
+  // AFD: Explicit precedence - asset type model overrides default
+  const modelFromAssetType = at?.model ?? null;
+  const defaultModel = state.models[0]?.id ?? '';
+  $('#asset-type-model').value = modelFromAssetType ?? defaultModel;
+  
   $('#asset-type-lora').value = at?.loraId || '';
   $('#asset-type-quality').value = at?.qualityPreset || '';
   $('#asset-type-active').checked = at?.isActive ?? true;
@@ -802,10 +807,19 @@ function handleReferenceDrop(e) {
   handleReferenceFiles(e.dataTransfer.files);
 }
 
-async function handleReferenceFiles(files) {
+// AFD Pattern: Sync wrapper collects DOM, passes to async core
+function handleReferenceFiles(files) {
   if (!state.selectedAssetType) return;
 
-  const modelId = $('#asset-type-model').value;
+  // Sync: Collect all DOM values
+  const modelSelect = $('#asset-type-model');
+  const modelId = modelSelect ? modelSelect.value : '';
+  
+  // Delegate to async core with pure data
+  handleReferenceFilesCore(files, modelId);
+}
+
+async function handleReferenceFilesCore(files, modelId) {
   const model = state.models.find((m) => m.id === modelId);
   const maxImages = model?.capabilities?.maxReferenceImages || 0;
   const currentCount = state.selectedAssetType.referenceImages?.length || 0;
@@ -880,18 +894,32 @@ async function refreshAssetType() {
   }
 }
 
-async function renderReferenceImages() {
+// AFD Pattern: Sync wrapper collects DOM, passes to async core
+function renderReferenceImages() {
+  // Sync: Collect DOM elements
   const preview = $('#reference-preview');
+  const countDisplay = $('#reference-images-current');
   const images = state.selectedAssetType?.referenceImages || [];
 
-  $('#reference-images-current').textContent = images.length;
+  // Update count synchronously
+  if (countDisplay) {
+    countDisplay.textContent = images.length;
+  }
 
   if (images.length === 0) {
-    preview.innerHTML = '';
+    if (preview) preview.innerHTML = '';
     return;
   }
 
-  // Fetch URLs for all storage IDs from Convex
+  // Delegate to async core, handle result with .then()
+  fetchReferenceImageUrls(images).then((htmlContent) => {
+    // Sync: DOM write happens in callback, not in async function
+    if (preview) preview.innerHTML = htmlContent;
+  });
+}
+
+async function fetchReferenceImageUrls(images) {
+  // Pure async logic - no DOM access
   const imageElements = [];
   for (const storageId of images) {
     const urlResult = await ConvexAPI.request('GET', `/api/storage/get-url?storageId=${storageId}`);
@@ -904,8 +932,7 @@ async function renderReferenceImages() {
       `);
     }
   }
-
-  preview.innerHTML = imageElements.join('');
+  return imageElements.join('');
 }
 
 // === Utilities ===

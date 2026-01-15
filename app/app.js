@@ -533,11 +533,17 @@ function setupGenerate() {
 function getGenerationFormValues() {
   const assetType = state.currentAssetType;
   const loraSelect = $('#lora-select');
+  
+  // AFD: Explicit precedence - asset type lora overrides selector
+  const loraFromAssetType = assetType?.loraId ?? null;
+  const loraFromSelector = loraSelect?.value || null;
+  const lora = loraFromAssetType ?? loraFromSelector;
+  
   return {
     userPrompt: $('#prompt').value.trim(),
     assetTypeId: $('#asset-type').value,
     quality: assetType?.qualityPreset || $('#quality').value,
-    lora: assetType?.loraId || loraSelect?.value || null,
+    lora,
   };
 }
 
