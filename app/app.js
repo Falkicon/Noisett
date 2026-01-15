@@ -12,6 +12,7 @@ const state = {
   isConnected: false,
   assetTypes: [], // Loaded from API
   currentAssetType: null, // Currently selected asset type with pre/post prompts
+  pendingGeneration: null, // Stores generation context for saving to history (Issue #21)
 };
 
 // DOM Elements
@@ -143,10 +144,17 @@ function formatRelativeTime(timestamp) {
   return date.toLocaleDateString();
 }
 
+<<<<<<< HEAD
 // History Actions (Issue #22)
 async function toggleHistoryFavorite(id) {
   try {
     await ConvexAPI.toggleFavorite(id);
+=======
+// History Actions (Issue #21)
+async function toggleHistoryFavorite(id) {
+  try {
+    await API.toggleGenerationFavorite(id);
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     // Update local state
     const item = state.history.find((h) => (h._id || h.id) === id);
     if (item) {
@@ -199,7 +207,11 @@ async function deleteHistoryItem(id) {
   }
 
   try {
+<<<<<<< HEAD
     await ConvexAPI.deleteGeneration(id);
+=======
+    await API.deleteGeneration(id);
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     // Remove from local state
     state.history = state.history.filter((h) => (h._id || h.id) !== id);
     renderHistorySidebar();
@@ -209,11 +221,10 @@ async function deleteHistoryItem(id) {
   }
 }
 
-// === Asset Types & Prompt Builder ===
+// === Asset Types ===
 
 /**
- * Default asset types (used until API integration in Issue #12)
- * Each asset type has pre/post prompts that wrap the user's input
+ * Default asset types (fallback when API unavailable)
  */
 const DEFAULT_ASSET_TYPES = [
   {
@@ -221,24 +232,28 @@ const DEFAULT_ASSET_TYPES = [
     name: 'Product Illustrations',
     prePrompt: 'A clean, modern product illustration of',
     postPrompt: ', minimalist style, white background, professional lighting',
+    isActive: true,
   },
   {
     id: 'icons',
     name: 'Icons (Fluent 2)',
     prePrompt: 'A Fluent 2 design system icon of',
     postPrompt: ', simple shapes, consistent stroke width, monochrome',
+    isActive: true,
   },
   {
     id: 'logo',
     name: 'Logo Illustrations',
     prePrompt: 'A modern logo design featuring',
     postPrompt: ', vector style, scalable, brand-appropriate',
+    isActive: true,
   },
   {
     id: 'premium',
     name: 'Premium Illustrations',
     prePrompt: 'A premium, high-quality illustration of',
     postPrompt: ', detailed, artistic, publication-ready',
+    isActive: true,
   },
 ];
 
@@ -247,10 +262,16 @@ const DEFAULT_ASSET_TYPES = [
  */
 async function loadAssetTypes() {
   try {
+<<<<<<< HEAD
     // Try to load from API
     const result = await API.getAssetTypes();
     const items = result?.data || result || [];
     // Filter to only active items if they have isActive property
+=======
+    const result = await API.getAssetTypes();
+    const items = result || [];
+    // Filter to only active items
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
     const activeItems = Array.isArray(items)
       ? items.filter((at) => at.isActive !== false)
       : [];
@@ -277,15 +298,18 @@ function populateAssetTypeSelector() {
   const select = $('#asset-type');
   if (!select) return;
 
-  select.innerHTML = state.assetTypes
-    .map((at) => `<option value="${at.id || at._id}">${at.name}</option>`)
+  const activeTypes = state.assetTypes.filter((at) => at.isActive !== false);
+  select.innerHTML = activeTypes
+    .map((at) => `<option value="${at._id || at.id}">${at.name}</option>`)
     .join('');
 
   // Set initial current asset type
-  if (state.assetTypes.length > 0) {
-    state.currentAssetType = state.assetTypes[0];
+  if (activeTypes.length > 0) {
+    state.currentAssetType = activeTypes[0];
   }
 }
+
+// === Prompt Builder ===
 
 /**
  * Setup prompt builder event listeners
@@ -298,16 +322,14 @@ function setupPromptBuilder() {
     assetTypeSelect.addEventListener('change', () => {
       const selectedId = assetTypeSelect.value;
       state.currentAssetType = state.assetTypes.find(
-        (at) => (at.id || at._id) === selectedId
-      );
+        (at) => (at._id || at.id) === selectedId
+      ) || null;
       updatePromptBuilder();
     });
   }
 
   if (promptInput) {
-    promptInput.addEventListener('input', () => {
-      updateCombinedPromptPreview();
-    });
+    promptInput.addEventListener('input', updateCombinedPromptPreview);
   }
 }
 
@@ -315,21 +337,20 @@ function setupPromptBuilder() {
  * Update the prompt builder UI with current asset type's pre/post prompts
  */
 function updatePromptBuilder() {
-  const preLabel = $('#pre-prompt-label');
-  const postLabel = $('#post-prompt-label');
+  const prePromptLabel = $('#pre-prompt-label');
+  const postPromptLabel = $('#post-prompt-label');
 
-  if (!state.currentAssetType) {
-    if (preLabel) preLabel.textContent = '';
-    if (postLabel) postLabel.textContent = '';
-    updateCombinedPromptPreview();
-    return;
+  if (state.currentAssetType) {
+    if (prePromptLabel) {
+      prePromptLabel.textContent = state.currentAssetType.prePrompt || '';
+    }
+    if (postPromptLabel) {
+      postPromptLabel.textContent = state.currentAssetType.postPrompt || '';
+    }
+  } else {
+    if (prePromptLabel) prePromptLabel.textContent = '';
+    if (postPromptLabel) postPromptLabel.textContent = '';
   }
-
-  const prePrompt = state.currentAssetType.prePrompt || '';
-  const postPrompt = state.currentAssetType.postPrompt || '';
-
-  if (preLabel) preLabel.textContent = prePrompt;
-  if (postLabel) postLabel.textContent = postPrompt;
 
   updateCombinedPromptPreview();
 }
@@ -339,16 +360,12 @@ function updatePromptBuilder() {
  */
 function updateCombinedPromptPreview() {
   const preview = $('#combined-prompt-preview');
+  const userPrompt = $('#prompt')?.value?.trim() || '';
+
   if (!preview) return;
 
-  const userPrompt = $('#prompt')?.value || '';
   const combined = buildCombinedPrompt(userPrompt);
-
-  if (combined) {
-    preview.textContent = combined;
-  } else {
-    preview.textContent = '';
-  }
+  preview.textContent = combined;
 }
 
 /**
@@ -370,15 +387,6 @@ function buildCombinedPrompt(userPrompt) {
 
   // Join with single space and trim
   return parts.join(' ').trim();
-}
-
-/**
- * Get the combined prompt for generation
- * @returns {string} The combined prompt ready for API
- */
-function getCombinedPromptForGeneration() {
-  const userPrompt = $('#prompt')?.value || '';
-  return buildCombinedPrompt(userPrompt);
 }
 
 // === Generate Tab ===
@@ -471,7 +479,7 @@ async function pollJobStatus() {
   try {
     const result = await API.getJob(state.currentJob);
     console.log('[DEBUG] Job response:', JSON.stringify(result, null, 2));
-    
+
     // Job is nested at result.data.job
     const job = result.data?.job || result.data || result;
     console.log('[DEBUG] Job object:', { status: job.status, progress: job.progress, hasImages: !!job.images });
@@ -481,7 +489,7 @@ async function pollJobStatus() {
     // Backend uses 'complete' not 'completed'
     if (job.status === 'complete') {
       console.log('[DEBUG] Job complete, images:', job.images);
-      showResults(job.images);
+      await showResults(job.images);
     } else if (job.status === 'failed') {
       console.log('[DEBUG] Job failed:', job.error_message);
       showError('Generation failed', job.error_message || job.error || 'Unknown error');
@@ -501,7 +509,7 @@ function updateProgress(progress) {
   $('#progress-fill').style.width = `${progress}%`;
 }
 
-function showResults(images) {
+async function showResults(images) {
   $('#results-loading').classList.add('hidden');
   $('#results-grid').classList.remove('hidden');
   $('#results-grid').innerHTML = '';
@@ -514,15 +522,41 @@ function showResults(images) {
     card.innerHTML = `
       <img src="${imageUrl}" alt="Generated image ${idx + 1}">
       <div class="image-overlay">
-        <button class="btn btn-small btn-secondary" onclick="downloadImage('${img.url}')">⬇️</button>
-        <button class="btn btn-small btn-secondary" onclick="favoriteImage('${state.currentJob}', ${idx})">⭐</button>
+        <button class="btn btn-small btn-secondary" onclick="downloadImage('${img.url}')">Download</button>
+        <button class="btn btn-small btn-secondary" onclick="favoriteImage('${state.currentJob}', ${idx})">Favorite</button>
       </div>
     `;
     $('#results-grid').appendChild(card);
   });
 
+  // Save generation record to Convex (Issue #21)
+  if (state.pendingGeneration) {
+    try {
+      const generationData = {
+        assetTypeId: state.pendingGeneration.assetTypeId,
+        userPrompt: state.pendingGeneration.userPrompt,
+        combinedPrompt: state.pendingGeneration.combinedPrompt,
+        images: images.map((img) => ({
+          url: img.url,
+          width: img.width || 1024,
+          height: img.height || 1024,
+          seed: img.seed,
+        })),
+        isFavorite: false,
+        createdAt: Date.now(),
+      };
+      console.log('[DEBUG] Saving generation to Convex:', generationData);
+      await API.createGeneration(generationData);
+      console.log('[DEBUG] Generation saved successfully');
+    } catch (error) {
+      console.error('[DEBUG] Failed to save generation to history:', error);
+      // Don't show error to user - generation was successful, just history save failed
+    }
+    state.pendingGeneration = null;
+  }
+
   // Reload history sidebar to show the new generation
-  loadHistorySidebar();
+  await loadHistorySidebar();
 }
 
 async function cancelGeneration() {
@@ -540,6 +574,7 @@ function resetGenerateUI() {
   $('#results-loading').classList.add('hidden');
   $('#results-empty').classList.remove('hidden');
   state.currentJob = null;
+  state.pendingGeneration = null;
 }
 
 function showError(title, message) {
@@ -548,7 +583,7 @@ function showError(title, message) {
 
 function downloadImage(url) {
   const a = document.createElement('a');
-  a.href = `${API.baseUrl}${url}`;
+  a.href = url.startsWith('http') ? url : `${API.baseUrl}${url}`;
   a.download = `noisett-${Date.now()}.png`;
   a.click();
 }
@@ -583,4 +618,7 @@ function populateLoraSelector() {
   select.innerHTML = '<option value="">None (Default)</option>' +
     activeLoras.map((l) => `<option value="${l._id}">${l.name} (${l.triggerWord})</option>`).join('');
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> e3e5a37 (feat: connect generation to Asset Type settings (Issue #21))
