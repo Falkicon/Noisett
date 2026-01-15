@@ -1,0 +1,49 @@
+# ==================================
+# Noisett API - Cloudflare Worker
+# ==================================
+# Python-based FastAPI worker for AI asset generation
+# Uses Convex for data, Fireworks for inference
+
+name = "noisett-api"
+main = "src/worker/main.py"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["python_workers"]
+
+# Python worker settings
+[build]
+command = "pip install -r requirements-worker.txt"
+
+# Environment (dev/staging/prod configured in dashboard)
+[vars]
+ENVIRONMENT = "development"
+# Secrets set via: wrangler secret put <NAME>
+# - CONVEX_URL
+# - FIREWORKS_API_KEY
+# - REPLICATE_API_TOKEN
+# - REPLICATE_WEBHOOK_SECRET
+
+# D1 Database (optional - for edge caching)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "noisett-cache"
+# database_id = "" # Created via: wrangler d1 create noisett-cache
+
+# R2 Storage (for training images and LoRA files)
+# [[r2_buckets]]
+# binding = "STORAGE"
+# bucket_name = "noisett-assets"
+# preview_bucket_name = "noisett-assets-preview"
+
+# KV for temporary data (SSE state, etc.)
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "" # Created via: wrangler kv namespace create CACHE
+
+# Workers AI (for edge inference fallback)
+[ai]
+binding = "AI"
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
