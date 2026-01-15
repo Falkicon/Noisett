@@ -12,12 +12,8 @@ const state = {
   isConnected: false,
   assetTypes: [], // Loaded from API
   currentAssetType: null, // Currently selected asset type with pre/post prompts
-<<<<<<< HEAD
-  pendingGeneration: null, // Stores generation context for saving to history (Issue #21)
-  isDirector: false, // Director mode flag (Issue #23)
-=======
   pendingGeneration: null, // Stores generation context for saving to history
->>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
+  isDirector: false, // Director mode flag
 };
 
 // DOM Elements
@@ -88,16 +84,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // === Health Check ===
 async function checkHealth() {
-  try {
-    const health = await API.health();
+  const result = await API.health();
+  if (result.success) {
+    const health = result.data;
     state.isConnected = health.status !== 'error';
     updateStatusIndicator(health.status === 'healthy' ? 'connected' : 'degraded');
-    $('#status-text').textContent = health.status === 'healthy' ? 'Ready' : 'Degraded (No GPU)';
-  } catch (error) {
+    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded (No GPU)');
+  } else {
     state.isConnected = false;
     updateStatusIndicator('error');
-    $('#status-text').textContent = 'Disconnected';
+    updateStatusText('Disconnected');
   }
+}
+
+function updateStatusText(text) {
+  $('#status-text').textContent = text;
 }
 
 function updateStatusIndicator(status) {
@@ -123,17 +124,16 @@ function setupHistorySidebar() {
 }
 
 async function loadHistorySidebar() {
-  try {
-    // Load from Convex generations API
-    const result = await API.listGenerations();
-    const items = result || [];
+  // Load from Convex generations API
+  const result = await API.listGenerations();
+  if (result.success) {
+    const items = result.data || [];
     state.history = Array.isArray(items) ? items : [];
-    renderHistorySidebar();
-  } catch (error) {
-    console.error('Failed to load history:', error);
+  } else {
+    console.error('Failed to load history:', result.error?.message);
     state.history = [];
-    renderHistorySidebar();
   }
+  renderHistorySidebar();
 }
 
 function renderHistorySidebar() {
@@ -199,58 +199,49 @@ function formatRelativeTime(timestamp) {
   return date.toLocaleDateString();
 }
 
-<<<<<<< HEAD
-// History Actions (Issue #22)
-=======
 // History Actions
->>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
 async function toggleHistoryFavorite(id) {
-  try {
-    await API.toggleGenerationFavorite(id);
+  const result = await API.toggleGenerationFavorite(id);
+  if (result.success) {
     // Update local state
     const item = state.history.find((h) => (h._id || h.id) === id);
     if (item) {
       item.isFavorite = !item.isFavorite;
     }
     renderHistorySidebar();
-  } catch (error) {
-    console.error('Failed to toggle favorite:', error);
-    alert('Failed to toggle favorite: ' + error.message);
+  } else {
+    console.error('Failed to toggle favorite:', result.error?.message);
+    showError('Failed to toggle favorite', result.error?.message || 'Unknown error');
   }
 }
 
 async function regenerateFromHistory(id) {
-  try {
-    // Find the history item
-    const item = state.history.find((h) => (h._id || h.id) === id);
-    if (!item) {
-      alert('Generation not found in history');
-      return;
-    }
-
-    // Populate the prompt field with the original prompt
-    const promptInput = $('#prompt');
-    if (promptInput) {
-      promptInput.value = item.userPrompt || item.prompt || '';
-      // Trigger input event to update char count and preview
-      promptInput.dispatchEvent(new Event('input'));
-    }
-
-    // Set the asset type if available
-    if (item.assetTypeId) {
-      const assetTypeSelect = $('#asset-type');
-      if (assetTypeSelect) {
-        assetTypeSelect.value = item.assetTypeId;
-        assetTypeSelect.dispatchEvent(new Event('change'));
-      }
-    }
-
-    // Start generation with the same parameters
-    startGeneration();
-  } catch (error) {
-    console.error('Failed to regenerate:', error);
-    alert('Failed to regenerate: ' + error.message);
+  // Find the history item
+  const item = state.history.find((h) => (h._id || h.id) === id);
+  if (!item) {
+    showError('Regenerate failed', 'Generation not found in history');
+    return;
   }
+
+  // Populate the prompt field with the original prompt
+  const promptInput = $('#prompt');
+  if (promptInput) {
+    promptInput.value = item.userPrompt || item.prompt || '';
+    // Trigger input event to update char count and preview
+    promptInput.dispatchEvent(new Event('input'));
+  }
+
+  // Set the asset type if available
+  if (item.assetTypeId) {
+    const assetTypeSelect = $('#asset-type');
+    if (assetTypeSelect) {
+      assetTypeSelect.value = item.assetTypeId;
+      assetTypeSelect.dispatchEvent(new Event('change'));
+    }
+  }
+
+  // Start generation with the same parameters
+  startGeneration();
 }
 
 async function deleteHistoryItem(id) {
@@ -258,14 +249,14 @@ async function deleteHistoryItem(id) {
     return;
   }
 
-  try {
-    await API.deleteGeneration(id);
+  const result = await API.deleteGeneration(id);
+  if (result.success) {
     // Remove from local state
     state.history = state.history.filter((h) => (h._id || h.id) !== id);
     renderHistorySidebar();
-  } catch (error) {
-    console.error('Failed to delete generation:', error);
-    alert('Failed to delete: ' + error.message);
+  } else {
+    console.error('Failed to delete generation:', result.error?.message);
+    showError('Failed to delete', result.error?.message || 'Unknown error');
   }
 }
 
@@ -311,33 +302,37 @@ const DEFAULT_ASSET_TYPES = [
  */
 async function loadAssetTypes() {
   try {
-<<<<<<< HEAD
-=======
     // First, check if we need to seed default Asset Types
     const needsSeedResult = await ConvexAPI.needsSeedAssetTypes();
-    if (needsSeedResult?.needsSeed) {
+    if (needsSeedResult?.success && needsSeedResult.data?.needsSeed) {
       console.log('First run detected - seeding default Asset Types...');
       const seedResult = await ConvexAPI.seedAssetTypes();
-      console.log('Seed result:', seedResult.message);
+      if (seedResult.success) {
+        console.log('Seed result:', seedResult.data?.message);
+      }
     }
 
     // Now load the Asset Types
->>>>>>> 7f38814 (feat: seed default Asset Types on first run (Issue #24))
     const result = await API.getAssetTypes();
-    const items = result?.data || result || [];
-    // Filter to only active items
-    const activeItems = Array.isArray(items)
-      ? items.filter((at) => at.isActive !== false)
-      : [];
+    if (result.success) {
+      const items = result.data || [];
+      // Filter to only active items
+      const activeItems = Array.isArray(items)
+        ? items.filter((at) => at.isActive !== false)
+        : [];
 
-    if (activeItems.length > 0) {
-      state.assetTypes = activeItems;
+      if (activeItems.length > 0) {
+        state.assetTypes = activeItems;
+      } else {
+        console.log('No active asset types from API, using defaults');
+        state.assetTypes = DEFAULT_ASSET_TYPES;
+      }
     } else {
-      console.log('No active asset types from API, using defaults');
+      console.log('Using default asset types (API not available)');
       state.assetTypes = DEFAULT_ASSET_TYPES;
     }
   } catch (error) {
-    console.log('Using default asset types (API not available)');
+    console.log('Using default asset types (unexpected error):', error);
     state.assetTypes = DEFAULT_ASSET_TYPES;
   }
 
@@ -493,69 +488,78 @@ async function startGeneration() {
   };
 
   // Show loading
+  showGenerationLoading();
+
+  console.log('[DEBUG] Starting generation:', {
+    userPrompt,
+    combinedPrompt,
+    assetTypeId,
+    quality,
+    lora,
+    modelSettings: assetType?.modelSettings,
+  });
+
+  // Use combined prompt for generation (applies Asset Type's pre/post prompts)
+  const result = await API.generate(combinedPrompt, assetTypeId, quality, 1, lora);
+  console.log('[DEBUG] Generate response:', JSON.stringify(result, null, 2));
+
+  if (!result.success) {
+    console.error('[DEBUG] Generation error:', result.error);
+    showError('Generation failed', result.error?.message || 'Unknown error');
+    resetGenerateUI();
+    state.pendingGeneration = null;
+    return;
+  }
+
+  // Extract job ID from various possible structures
+  state.currentJob = result.data?.job?.id || result.data?.job_id;
+  console.log('[DEBUG] Job ID extracted:', state.currentJob);
+
+  if (!state.currentJob) {
+    showError('Generation failed', 'No job ID in response');
+    resetGenerateUI();
+    state.pendingGeneration = null;
+    return;
+  }
+  pollJobStatus();
+}
+
+function showGenerationLoading() {
   $('#results-empty').classList.add('hidden');
   $('#results-grid').classList.add('hidden');
   $('#results-loading').classList.remove('hidden');
-
-  try {
-    console.log('[DEBUG] Starting generation:', {
-      userPrompt,
-      combinedPrompt,
-      assetTypeId,
-      quality,
-      lora,
-      modelSettings: assetType?.modelSettings,
-    });
-
-    // Use combined prompt for generation (applies Asset Type's pre/post prompts)
-    const result = await API.generate(combinedPrompt, assetTypeId, quality, 1, lora);
-    console.log('[DEBUG] Generate response:', JSON.stringify(result, null, 2));
-
-    // Extract job ID from various possible structures
-    state.currentJob = result.data?.job?.id || result.data?.job_id || result.job_id || result.job?.id;
-    console.log('[DEBUG] Job ID extracted:', state.currentJob);
-
-    if (!state.currentJob) {
-      throw new Error('No job ID in response');
-    }
-    pollJobStatus();
-  } catch (error) {
-    console.error('[DEBUG] Generation error:', error);
-    showError('Generation failed', error.message);
-    resetGenerateUI();
-    state.pendingGeneration = null;
-  }
 }
 
 async function pollJobStatus() {
   if (!state.currentJob) return;
 
-  try {
-    const result = await API.getJob(state.currentJob);
-    console.log('[DEBUG] Job response:', JSON.stringify(result, null, 2));
+  const result = await API.getJob(state.currentJob);
+  console.log('[DEBUG] Job response:', JSON.stringify(result, null, 2));
 
-    // Job is nested at result.data.job
-    const job = result.data?.job || result.data || result;
-    console.log('[DEBUG] Job object:', { status: job.status, progress: job.progress, hasImages: !!job.images });
-
-    updateProgress(job.progress || 0);
-
-    // Backend uses 'complete' not 'completed'
-    if (job.status === 'complete') {
-      console.log('[DEBUG] Job complete, images:', job.images);
-      await showResults(job.images);
-    } else if (job.status === 'failed') {
-      console.log('[DEBUG] Job failed:', job.error_message);
-      showError('Generation failed', job.error_message || job.error || 'Unknown error');
-      resetGenerateUI();
-    } else {
-      console.log('[DEBUG] Job still processing, polling again...');
-      setTimeout(pollJobStatus, 1000);
-    }
-  } catch (error) {
-    console.error('[DEBUG] Poll error:', error);
-    showError('Failed to get job status', error.message);
+  if (!result.success) {
+    console.error('[DEBUG] Poll error:', result.error);
+    showError('Failed to get job status', result.error?.message || 'Unknown error');
     resetGenerateUI();
+    return;
+  }
+
+  // Job is nested at result.data.job
+  const job = result.data?.job || result.data;
+  console.log('[DEBUG] Job object:', { status: job.status, progress: job.progress, hasImages: !!job.images });
+
+  updateProgress(job.progress || 0);
+
+  // Backend uses 'complete' not 'completed'
+  if (job.status === 'complete') {
+    console.log('[DEBUG] Job complete, images:', job.images);
+    await showResults(job.images);
+  } else if (job.status === 'failed') {
+    console.log('[DEBUG] Job failed:', job.error_message);
+    showError('Generation failed', job.error_message || job.error || 'Unknown error');
+    resetGenerateUI();
+  } else {
+    console.log('[DEBUG] Job still processing, polling again...');
+    setTimeout(pollJobStatus, 1000);
   }
 }
 
@@ -585,27 +589,7 @@ async function showResults(images) {
 
   // Save generation record to Convex
   if (state.pendingGeneration) {
-    try {
-      const generationData = {
-        assetTypeId: state.pendingGeneration.assetTypeId,
-        userPrompt: state.pendingGeneration.userPrompt,
-        combinedPrompt: state.pendingGeneration.combinedPrompt,
-        images: images.map((img) => ({
-          url: img.url,
-          width: img.width || 1024,
-          height: img.height || 1024,
-          seed: img.seed,
-        })),
-        isFavorite: false,
-        createdAt: Date.now(),
-      };
-      console.log('[DEBUG] Saving generation to Convex:', generationData);
-      await API.createGeneration(generationData);
-      console.log('[DEBUG] Generation saved successfully');
-    } catch (error) {
-      console.error('[DEBUG] Failed to save generation to history:', error);
-      // Don't show error to user - generation was successful, just history save failed
-    }
+    await saveGenerationToHistory(images);
     state.pendingGeneration = null;
   }
 
@@ -613,12 +597,35 @@ async function showResults(images) {
   await loadHistorySidebar();
 }
 
+async function saveGenerationToHistory(images) {
+  const generationData = {
+    assetTypeId: state.pendingGeneration.assetTypeId,
+    userPrompt: state.pendingGeneration.userPrompt,
+    combinedPrompt: state.pendingGeneration.combinedPrompt,
+    images: images.map((img) => ({
+      url: img.url,
+      width: img.width || 1024,
+      height: img.height || 1024,
+      seed: img.seed,
+    })),
+    isFavorite: false,
+    createdAt: Date.now(),
+  };
+  console.log('[DEBUG] Saving generation to Convex:', generationData);
+  const result = await API.createGeneration(generationData);
+  if (result.success) {
+    console.log('[DEBUG] Generation saved successfully');
+  } else {
+    // Don't show error to user - generation was successful, just history save failed
+    console.error('[DEBUG] Failed to save generation to history:', result.error?.message);
+  }
+}
+
 async function cancelGeneration() {
   if (state.currentJob) {
-    try {
-      await API.cancelJob(state.currentJob);
-    } catch (e) {
-      console.error('Cancel failed:', e);
+    const result = await API.cancelJob(state.currentJob);
+    if (!result.success) {
+      console.error('Cancel failed:', result.error?.message);
     }
   }
   resetGenerateUI();
@@ -643,26 +650,25 @@ function downloadImage(url) {
 }
 
 async function favoriteImage(jobId, imageIndex) {
-  try {
-    await API.addFavorite(jobId, imageIndex);
-    alert('Added to favorites!');
-  } catch (error) {
-    alert('Failed to favorite: ' + error.message);
+  const result = await API.addFavorite(jobId, imageIndex);
+  if (result.success) {
+    showError('Success', 'Added to favorites!');
+  } else {
+    showError('Failed to favorite', result.error?.message || 'Unknown error');
   }
 }
 
 // === LoRAs (for Generate tab selector) ===
 async function loadLoras() {
-  try {
-    const result = await API.listLoras();
-    const loras = result.data || result || [];
+  const result = await API.listLoras();
+  if (result.success) {
+    const loras = result.data || [];
     state.loras = Array.isArray(loras) ? loras : [];
-    populateLoraSelector();
-  } catch (error) {
-    console.error('Failed to load LoRAs:', error);
+  } else {
+    console.error('Failed to load LoRAs:', result.error?.message);
     state.loras = [];
-    populateLoraSelector();
   }
+  populateLoraSelector();
 }
 
 function populateLoraSelector() {

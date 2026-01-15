@@ -34,16 +34,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // === Health Check ===
 async function checkHealth() {
-  try {
-    const health = await API.health();
+  const result = await API.health();
+  if (result.success) {
+    const health = result.data;
     state.isConnected = health.status !== 'error';
     updateStatusIndicator(health.status === 'healthy' ? 'connected' : 'degraded');
-    $('#status-text').textContent = health.status === 'healthy' ? 'Ready' : 'Degraded';
-  } catch (error) {
+    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded');
+  } else {
     state.isConnected = false;
     updateStatusIndicator('error');
-    $('#status-text').textContent = 'Disconnected';
+    updateStatusText('Disconnected');
   }
+}
+
+function updateStatusText(text) {
+  $('#status-text').textContent = text;
 }
 
 function updateStatusIndicator(status) {
@@ -93,39 +98,38 @@ function switchSidebarTab(tabName) {
 
 // === Load Data ===
 async function loadModels() {
-  try {
-    const result = await API.request('GET', '/api/models/list');
-    state.models = result.data || result.models || [];
-    populateModelSelector();
-  } catch (error) {
-    console.error('Failed to load models:', error);
+  const result = await API.request('GET', '/api/models/list');
+  if (result.success) {
+    state.models = result.data || [];
+  } else {
+    console.error('Failed to load models:', result.error?.message);
     state.models = [];
   }
+  populateModelSelector();
 }
 
 async function loadLoras() {
-  try {
-    const result = await API.listLoras();
-    const loras = result.data || result || [];
+  const result = await API.listLoras();
+  if (result.success) {
+    const loras = result.data || [];
     state.loras = Array.isArray(loras) ? loras : [];
-    populateLoraSelector();
-    renderLoraList();
-  } catch (error) {
-    console.error('Failed to load LoRAs:', error);
+  } else {
+    console.error('Failed to load LoRAs:', result.error?.message);
     state.loras = [];
   }
+  populateLoraSelector();
+  renderLoraList();
 }
 
 async function loadAssetTypes() {
-  try {
-    const result = await API.request('GET', '/api/asset-types/list');
-    state.assetTypes = result.data || result.assetTypes || [];
-    renderAssetTypeList();
-  } catch (error) {
-    console.error('Failed to load asset types:', error);
+  const result = await API.request('GET', '/api/asset-types/list');
+  if (result.success) {
+    state.assetTypes = result.data || [];
+  } else {
+    console.error('Failed to load asset types:', result.error?.message);
     state.assetTypes = [];
-    renderAssetTypeList();
   }
+  renderAssetTypeList();
 }
 
 // === Render Lists ===
@@ -381,13 +385,38 @@ function updatePromptPreview() {
 
 // === Save/Delete Asset Type ===
 async function saveAssetType() {
-  const name = $('#asset-type-name').value.trim();
+  const name = getAssetTypeFormName();
   if (!name) {
-    alert('Please enter a name');
+    showError('Validation', 'Please enter a name');
     return;
   }
 
-  const data = {
+  const data = collectAssetTypeFormData(name);
+
+  let result;
+  if (state.isCreating) {
+    result = await API.request('POST', '/api/asset-types/create', data);
+  } else {
+    result = await API.request('POST', '/api/asset-types/update', {
+      id: state.selectedAssetType._id,
+      ...data,
+    });
+  }
+
+  if (result.success) {
+    await loadAssetTypes();
+    hideEditor();
+  } else {
+    showError('Failed to save', result.error?.message || 'Unknown error');
+  }
+}
+
+function getAssetTypeFormName() {
+  return $('#asset-type-name').value.trim();
+}
+
+function collectAssetTypeFormData(name) {
+  return {
     name,
     description: $('#asset-type-description').value.trim() || undefined,
     prePrompt: $('#asset-type-pre-prompt').value.trim(),
@@ -398,34 +427,22 @@ async function saveAssetType() {
     qualityPreset: $('#asset-type-quality').value || undefined,
     isActive: $('#asset-type-active').checked,
   };
+}
 
-  try {
-    if (state.isCreating) {
-      await API.request('POST', '/api/asset-types/create', data);
-    } else {
-      await API.request('POST', '/api/asset-types/update', {
-        id: state.selectedAssetType._id,
-        ...data,
-      });
-    }
-
-    await loadAssetTypes();
-    hideEditor();
-  } catch (error) {
-    alert('Failed to save: ' + error.message);
-  }
+function showError(title, message) {
+  alert(`${title}: ${message}`);
 }
 
 async function deleteAssetType() {
   if (!state.selectedAssetType) return;
   if (!confirm(`Delete "${state.selectedAssetType.name}"? This will deactivate the asset type.`)) return;
 
-  try {
-    await API.request('DELETE', `/api/asset-types/delete?id=${state.selectedAssetType._id}`);
+  const result = await API.request('DELETE', `/api/asset-types/delete?id=${state.selectedAssetType._id}`);
+  if (result.success) {
     await loadAssetTypes();
     hideEditor();
-  } catch (error) {
-    alert('Failed to delete: ' + error.message);
+  } else {
+    showError('Failed to delete', result.error?.message || 'Unknown error');
   }
 }
 
@@ -513,70 +530,82 @@ function showLoraDetail() {
 }
 
 async function loadTrainingImages(loraId) {
-  try {
-    const response = await API.request('GET', `/api/lora/${loraId}/training-images`);
+  const response = await API.request('GET', `/api/lora/${loraId}/training-images`);
 
-    if (!response.success) {
-      console.error('Failed to load training images:', response);
-      return;
+  if (!response.success) {
+    console.error('Failed to load training images:', response.error?.message);
+    updateTrainingImagesCount('?');
+    return;
+  }
+
+  const images = response.data || [];
+  updateTrainingImagesCount(images.length);
+  renderTrainingImages(images);
+
+  // Show train button if we have enough images
+  if (images.length >= 5) {
+    showTrainButton();
+  }
+}
+
+function updateTrainingImagesCount(count) {
+  $('#lora-detail-images').textContent = count;
+}
+
+function showTrainButton() {
+  $('#lora-train-btn').classList.remove('hidden');
+}
+
+function renderTrainingImages(images) {
+  const preview = $('#upload-preview');
+  preview.innerHTML = '';
+
+  for (const img of images) {
+    const div = document.createElement('div');
+    div.className = 'upload-preview-item uploaded';
+
+    // Use the pre-resolved URL from the API
+    if (img.url) {
+      div.innerHTML = `<img src="${img.url}" alt="${img.filename}" title="${img.filename}">`;
+    } else {
+      div.innerHTML = `<span class="error-icon">⚠️</span>`;
+      div.title = 'Image not found';
     }
-
-    const images = response.data || [];
-    $('#lora-detail-images').textContent = images.length;
-
-    // Display images in the upload preview area
-    const preview = $('#upload-preview');
-    preview.innerHTML = '';
-
-    for (const img of images) {
-      const div = document.createElement('div');
-      div.className = 'upload-preview-item uploaded';
-
-      // Use the pre-resolved URL from the API
-      if (img.url) {
-        div.innerHTML = `<img src="${img.url}" alt="${img.filename}" title="${img.filename}">`;
-      } else {
-        div.innerHTML = `<span class="error-icon">⚠️</span>`;
-        div.title = 'Image not found';
-      }
-      preview.appendChild(div);
-    }
-
-    // Show train button if we have enough images
-    if (images.length >= 5) {
-      $('#lora-train-btn').classList.remove('hidden');
-    }
-  } catch (error) {
-    console.error('Failed to load training images:', error);
-    $('#lora-detail-images').textContent = '?';
+    preview.appendChild(div);
   }
 }
 
 async function createLora() {
-  const name = $('#lora-name').value.trim();
-  const trigger = $('#lora-trigger').value.trim();
-  const model = $('#lora-model').value;
-  const steps = parseInt($('#lora-steps').value) || 1000;
+  const formData = getLoraFormData();
 
-  if (!name || !trigger) {
-    alert('Please fill in name and trigger word');
+  if (!formData.name || !formData.trigger) {
+    showError('Validation', 'Please fill in name and trigger word');
     return;
   }
 
-  try {
-    const result = await API.createLora(name, trigger, model, steps);
+  const result = await API.createLora(formData.name, formData.trigger, formData.model, formData.steps);
 
+  if (result.success) {
     await loadLoras();
     hideLoraCreateForm();
 
     // Select the new LoRA
-    const newId = result.data?.id || result.id;
+    const newId = result.data?.id;
     if (newId) {
       selectLora(newId);
     }
-  } catch (error) {
-    alert('Failed to create LoRA: ' + error.message);
+  } else {
+    showError('Failed to create LoRA', result.error?.message || 'Unknown error');
   }
+}
+
+function getLoraFormData() {
+  return {
+    name: $('#lora-name').value.trim(),
+    trigger: $('#lora-trigger').value.trim(),
+    model: $('#lora-model').value,
+    steps: parseInt($('#lora-steps').value) || 1000,
+  };
 }
 
 function handleDrop(e) {
@@ -589,8 +618,7 @@ function handleDrop(e) {
 async function handleFiles(files) {
   if (!state.selectedLora) return;
 
-  const preview = $('#upload-preview');
-  preview.innerHTML = '';
+  clearUploadPreview();
 
   let uploadedCount = 0;
   const loraId = state.selectedLora._id;
@@ -599,49 +627,17 @@ async function handleFiles(files) {
     if (!file.type.startsWith('image/')) continue;
 
     // Preview immediately
-    const div = document.createElement('div');
-    div.className = 'upload-preview-item';
-    div.innerHTML = '<div class="uploading-indicator">⏳</div>';
-    preview.appendChild(div);
+    const div = createUploadPreviewItem();
+    previewFile(file, div);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      div.innerHTML = `<img src="${e.target.result}">`;
-    };
-    reader.readAsDataURL(file);
-
-    try {
-      // 1. Get upload URL from backend
-      const urlResponse = await API.getUploadUrl(loraId);
-      const uploadUrl = urlResponse.data.uploadUrl;
-
-      // 2. Upload file to Convex storage
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        body: file,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`);
-      }
-
-      const { storageId } = await uploadResponse.json();
-
-      // 3. Register training image in Convex
-      await API.request('POST', '/api/training-images', {
-        lora_id: loraId,
-        storage_id: storageId,
-        filename: file.name,
-        file_type: file.type,
-        file_size: file.size,
-      });
-
+    const result = await uploadFileToStorage(loraId, file);
+    if (result.success) {
       uploadedCount++;
       div.classList.add('uploaded');
-    } catch (error) {
-      console.error(`Failed to upload ${file.name}:`, error);
+    } else {
+      console.error(`Failed to upload ${file.name}:`, result.error?.message);
       div.classList.add('upload-error');
-      div.title = error.message;
+      div.title = result.error?.message || 'Upload failed';
     }
   }
 
@@ -649,15 +645,64 @@ async function handleFiles(files) {
 
   // Refresh LoRA to get updated image count
   if (uploadedCount > 0) {
-    try {
-      const updatedLora = await API.getLora(loraId);
-      if (updatedLora.success) {
-        state.selectedLora = updatedLora.data;
-        showLoraDetail();
-      }
-    } catch (e) {
-      console.error('Failed to refresh LoRA:', e);
-    }
+    await refreshSelectedLora(loraId);
+  }
+}
+
+function clearUploadPreview() {
+  $('#upload-preview').innerHTML = '';
+}
+
+function createUploadPreviewItem() {
+  const preview = $('#upload-preview');
+  const div = document.createElement('div');
+  div.className = 'upload-preview-item';
+  div.innerHTML = '<div class="uploading-indicator">⏳</div>';
+  preview.appendChild(div);
+  return div;
+}
+
+function previewFile(file, div) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    div.innerHTML = `<img src="${e.target.result}">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadFileToStorage(loraId, file) {
+  // 1. Get upload URL from backend
+  const urlResponse = await API.getUploadUrl(loraId);
+  if (!urlResponse.success) {
+    return urlResponse;
+  }
+  const uploadUrl = urlResponse.data.uploadUrl;
+
+  // 2. Upload file to Convex storage
+  const uploadResult = await API.uploadImage(uploadUrl, file);
+  if (!uploadResult.success) {
+    return uploadResult;
+  }
+
+  const { storageId } = uploadResult.data;
+
+  // 3. Register training image in Convex
+  return API.request('POST', '/api/training-images', {
+    lora_id: loraId,
+    storage_id: storageId,
+    filename: file.name,
+    file_type: file.type,
+    file_size: file.size,
+  });
+}
+
+async function refreshSelectedLora(loraId) {
+  const updatedLora = await API.getLora(loraId);
+  if (updatedLora.success) {
+    state.selectedLora = updatedLora.data;
+    showLoraDetail();
+  } else {
+    console.error('Failed to refresh LoRA:', updatedLora.error?.message);
   }
 }
 
@@ -670,13 +715,13 @@ async function deleteLora() {
   if (!state.selectedLora) return;
   if (!confirm(`Delete "${state.selectedLora.name}"?`)) return;
 
-  try {
-    await API.deleteLora(state.selectedLora._id);
+  const result = await API.deleteLora(state.selectedLora._id);
+  if (result.success) {
     state.selectedLora = null;
     await loadLoras();
     hideLoraCreateForm();
-  } catch (error) {
-    alert('Failed to delete: ' + error.message);
+  } else {
+    showError('Failed to delete', result.error?.message || 'Unknown error');
   }
 }
 

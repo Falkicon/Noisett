@@ -6,6 +6,10 @@ const API = {
   baseUrl: 'http://localhost:8000',
   convexUrl: 'https://neighborly-gazelle-692.convex.site',
 
+  /**
+   * Make an API request and return CommandResult format.
+   * @returns {{ success: boolean, data?: any, error?: { code: string, message: string, suggestion: string } }}
+   */
   async request(method, path, body = null) {
     const options = {
       method,
@@ -13,24 +17,52 @@ const API = {
     };
     if (body) options.body = JSON.stringify(body);
 
-    const response = await fetch(`${this.baseUrl}${path}`, options);
-    const data = await response.json();
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, options);
+      const data = await response.json();
 
-    if (!response.ok) {
-      const error = new Error(data.detail || 'Request failed');
-      error.status = response.status;
-      throw error;
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            code: `HTTP_${response.status}`,
+            message: data.detail || 'Request failed',
+            suggestion: response.status === 404
+              ? 'Check that the endpoint exists and the server is running'
+              : response.status >= 500
+                ? 'The server encountered an error. Try again or check server logs'
+                : 'Check your request parameters and try again',
+          },
+        };
+      }
+
+      // Backend already returns CommandResult format
+      if (data.success === false && data.error) {
+        return {
+          success: false,
+          error: {
+            code: data.error.code || 'BACKEND_ERROR',
+            message: data.error.message || 'Operation failed',
+            suggestion: data.error.suggestion || 'Check the error details and try again',
+          },
+        };
+      }
+
+      // Success - wrap raw data in CommandResult
+      return {
+        success: true,
+        data: data.data !== undefined ? data.data : data,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: {
+          code: 'NETWORK_ERROR',
+          message: err.message || 'Network request failed',
+          suggestion: 'Check your network connection and ensure the server is running',
+        },
+      };
     }
-
-    // Handle CommandResult format
-    if (data.success === false && data.error) {
-      const error = new Error(data.error.message);
-      error.code = data.error.code;
-      error.suggestion = data.error.suggestion;
-      throw error;
-    }
-
-    return data;
   },
 
   // === Health ===
@@ -112,11 +144,35 @@ const API = {
   },
 
   async uploadImage(uploadUrl, file) {
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: file,
-    });
-    return response.json();
+    try {
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: file,
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            code: 'UPLOAD_FAILED',
+            message: 'Failed to upload image',
+            suggestion: 'Check file size and format, then try again',
+          },
+        };
+      }
+
+      return { success: true, data };
+    } catch (err) {
+      return {
+        success: false,
+        error: {
+          code: 'UPLOAD_ERROR',
+          message: err.message || 'Upload failed',
+          suggestion: 'Check your network connection and try again',
+        },
+      };
+    }
   },
 
   async deleteLora(loraId) {
@@ -169,14 +225,43 @@ const API = {
 const ConvexAPI = {
   baseUrl: 'https://neighborly-gazelle-692.convex.site',
 
+  /**
+   * Make a Convex API request and return CommandResult format.
+   * @returns {{ success: boolean, data?: any, error?: { code: string, message: string, suggestion: string } }}
+   */
   async request(method, path, body = null) {
     const options = { method };
     if (body) {
       options.headers = { 'Content-Type': 'application/json' };
       options.body = JSON.stringify(body);
     }
-    const response = await fetch(`${this.baseUrl}${path}`, options);
-    return response.json();
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, options);
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            code: `CONVEX_HTTP_${response.status}`,
+            message: data.message || 'Convex request failed',
+            suggestion: 'Check Convex deployment status and try again',
+          },
+        };
+      }
+
+      return { success: true, data };
+    } catch (err) {
+      return {
+        success: false,
+        error: {
+          code: 'CONVEX_ERROR',
+          message: err.message || 'Convex request failed',
+          suggestion: 'Check your network connection and Convex status',
+        },
+      };
+    }
   },
 
   async listLoras() {
