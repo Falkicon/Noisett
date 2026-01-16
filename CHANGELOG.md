@@ -16,6 +16,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.9.3] - 2026-01-16
+
+### Changed
+
+- **Quality Preset Removed** — Eliminated the Draft/Standard/High quality abstraction
+  - Removed Quality dropdown from both User and Director mode UIs
+  - Director now directly configures `resolution`, `aspect_ratio`, `output_quality` per asset type
+  - Settings stored in `modelSettings` and passed directly to ML models without normalization
+
+### Fixed
+
+- **modelSettings Passthrough** — Director's per-asset-type settings now flow through to ML generation
+  - Backend extracts `modelSettings` from Convex asset type data
+  - Settings attached to `model_config._modelSettings` for passthrough
+  - FLUX 2 [max] now correctly uses `resolution` parameter (not `megapixels`)
+  - Valid FLUX 2 resolutions: 0.5 MP, 1 MP, 2 MP, 4 MP
+
+### UI Refinements
+
+- **History Sidebar** — Redesigned for better visual hierarchy
+  - Full-width images with text below (vertical layout)
+  - Action buttons (favorite, regenerate, delete) now horizontal on time row
+  - Buttons always visible (no hover required)
+  
+- **Layout Polish**
+  - Dark scrollbar styling matching the theme
+  - Reduced panel spacing throughout (10px gaps)
+  - Smaller cell border-radius (4px)
+  - Added padding between cards and scrollbar
+
+---
+
 ## [0.9.2] - 2026-01-13
 
 ### Changed
