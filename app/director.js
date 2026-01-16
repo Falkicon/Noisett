@@ -19,6 +19,32 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
+/**
+ * Shared dropzone utility - sets up drag/drop and file input handling
+ * @param {string} dropzoneSelector - Selector for dropzone element
+ * @param {string} inputSelector - Selector for file input element
+ * @param {Function} onFiles - Callback receiving FileList
+ */
+function setupDropzone(dropzoneSelector, inputSelector, onFiles) {
+  const dropzone = $(dropzoneSelector);
+  const input = $(inputSelector);
+  
+  if (!dropzone || !input) return;
+  
+  dropzone.addEventListener('click', () => input.click());
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    onFiles(e.dataTransfer.files);
+  });
+  input.addEventListener('change', (e) => onFiles(e.target.files));
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   setupSidebarTabs();
@@ -495,18 +521,8 @@ function setupLoraManagement() {
   $('#lora-create-cancel').addEventListener('click', hideLoraCreateForm);
   $('#lora-create-submit').addEventListener('click', createLora);
 
-  // Upload dropzone
-  const dropzone = $('#upload-dropzone');
-  const input = $('#upload-input');
-
-  dropzone.addEventListener('click', () => input.click());
-  dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.classList.add('dragover');
-  });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', handleDrop);
-  input.addEventListener('change', (e) => handleFiles(e.target.files));
+  // Upload dropzone (LoRA training images)
+  setupDropzone('#upload-dropzone', '#upload-input', handleFiles);
 
   // Actions
   $('#lora-train-btn').addEventListener('click', startTraining);
@@ -651,12 +667,7 @@ function getLoraFormData() {
   };
 }
 
-function handleDrop(e) {
-  e.preventDefault();
-  $('#upload-dropzone').classList.remove('dragover');
-  const files = e.dataTransfer.files;
-  handleFiles(files);
-}
+// handleDrop removed - now handled by setupDropzone utility
 
 function handleFiles(files) {
   if (!state.selectedLora) return;
@@ -876,24 +887,11 @@ async function performDeleteLora() {
 
 // === Reference Images Management ===
 function setupReferenceImages() {
-  const dropzone = $('#reference-dropzone');
-  const input = $('#reference-input');
-
-  dropzone.addEventListener('click', () => input.click());
-  dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.classList.add('dragover');
-  });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', handleReferenceDrop);
-  input.addEventListener('change', (e) => handleReferenceFiles(e.target.files));
+  // Reference image dropzone (asset type editor)
+  setupDropzone('#reference-dropzone', '#reference-input', handleReferenceFiles);
 }
 
-function handleReferenceDrop(e) {
-  e.preventDefault();
-  $('#reference-dropzone').classList.remove('dragover');
-  handleReferenceFiles(e.dataTransfer.files);
-}
+// handleReferenceDrop removed - now handled by setupDropzone utility
 
 // AFD Pattern: Sync wrapper collects DOM, passes to async core
 function handleReferenceFiles(files) {

@@ -893,7 +893,7 @@ code {
 }
 
 .upload-preview-item.uploaded {
-  border: 2px solid var(--success);
+  border: 3px solid var(--success);
 }
 
 .upload-preview-item.upload-error {
