@@ -241,11 +241,11 @@ export const reorderReferenceImages = internalMutation({
   },
 });
 
-// Soft delete an Asset Type by setting isActive to false
+// Delete an Asset Type permanently
 export const deleteById = internalMutation({
   args: { id: v.id("assetTypes") },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { isActive: false });
+    await ctx.db.delete(args.id);
   },
 });
 
