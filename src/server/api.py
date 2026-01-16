@@ -45,7 +45,7 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=500, description="Image description")
     asset_type: str = Field(default="product", description="Type of asset to generate")
     model: str = Field(default="hidream", description="Model to use")
-    quality: str = Field(default="standard", description="Quality preset")
+    quality: str = Field(default="standard", description="Quality preset (deprecated - use modelSettings)")
     count: int = Field(default=1, ge=1, le=4, description="Number of variations")
     lora: str | None = Field(default=None, description="LoRA ID to use for styled generation")
     asset_type_id: str | None = Field(default=None, description="Convex Asset Type ID")

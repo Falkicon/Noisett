@@ -49,7 +49,7 @@ class AssetGenerateInput(BaseModel):
     )
     quality: QualityPreset = Field(
         default=QualityPreset.STANDARD,
-        description="Quality preset affecting speed vs quality",
+        description="Quality preset (deprecated - use modelSettings instead)",
     )
     count: int = Field(
         default=1,
@@ -254,8 +254,6 @@ async def generate(input: AssetGenerateInput) -> CommandResult[AssetGenerateOutp
 
     # Build suggestions
     suggestions: list[str] = []
-    if input.quality == QualityPreset.DRAFT:
-        suggestions.append("Use 'standard' quality for better results")
     if input.asset_type == AssetType.PRODUCT:
         suggestions.append("Try 'premium' asset type for marketing-grade quality")
 
