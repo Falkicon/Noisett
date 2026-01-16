@@ -7,12 +7,21 @@
     "dev:convex": "convex dev",
     "dev:api": "python -m uvicorn src.server.api:app --reload --host 0.0.0.0 --port 8000",
     "deploy": "convex deploy",
-    "update:pip": "python scripts/update_packages.py"
+    "update:pip": "python scripts/update_packages.py",
+    "contracts:compile": "tsp compile contracts/main.tsp",
+    "contracts:types": "openapi-typescript contracts/contracts/generated/openapi.yaml -o contracts/generated/types.ts",
+    "contracts:generate": "npm run contracts:compile && npm run contracts:types"
   },
   "dependencies": {
     "convex": "^1.31.4"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@typespec/compiler": "^1.8.0",
+    "@typespec/http": "^1.8.0",
+    "@typespec/json-schema": "^1.8.0",
+    "@typespec/openapi3": "^1.8.0",
+    "@typespec/rest": "^0.78.0",
+    "concurrently": "^9.1.2",
+    "openapi-typescript": "^7.10.1"
   }
 }

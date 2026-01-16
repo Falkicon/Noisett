@@ -1,0 +1,473 @@
+openapi: 3.0.0
+info:
+  title: (title)
+  version: 0.0.0
+tags: []
+paths: {}
+components:
+  schemas:
+    Models.ApiError:
+      type: object
+      required:
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        suggestion:
+          type: string
+      description: API error details
+    Models.AssetType:
+      type: object
+      required:
+        - _id
+        - name
+        - prePrompt
+        - postPrompt
+        - model
+        - modelSettings
+        - isActive
+        - createdAt
+      properties:
+        _id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: Convex document ID
+        name:
+          type: string
+          description: Display name shown in UI
+        slug:
+          type: string
+          description: Backend API identifier (e.g., 'icons', 'product')
+        description:
+          type: string
+          description: Human-readable description
+        prePrompt:
+          type: string
+          description: Text prepended to user prompt
+        postPrompt:
+          type: string
+          description: Text appended to user prompt
+        model:
+          type: string
+          description: Model identifier (e.g., 'replicate:flux-2-max')
+        modelSettings:
+          type: object
+          additionalProperties: {}
+          description: Model-specific settings (varies by model)
+        loraId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          nullable: true
+          description: Optional LoRA ID for styled generation. NULL means no LoRA.
+        referenceImages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Models.StorageId'
+          description: Optional reference images for style guidance
+        qualityPreset:
+          type: string
+          description: 'Quality preset: draft, standard, or high'
+        isActive:
+          type: boolean
+          description: Whether visible to users in the UI
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/Models.Timestamp'
+          description: Creation timestamp
+      description: Asset type configuration for image generation presets
+    Models.AssetTypeCreateRequest:
+      type: object
+      required:
+        - name
+        - prePrompt
+        - postPrompt
+        - model
+        - modelSettings
+        - isActive
+        - createdAt
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        prePrompt:
+          type: string
+        postPrompt:
+          type: string
+        model:
+          type: string
+        modelSettings:
+          type: object
+          additionalProperties: {}
+        loraId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          nullable: true
+          description: LoRA ID or null for no LoRA. Both null and undefined are valid.
+        qualityPreset:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/Models.Timestamp'
+      description: Request to create a new asset type
+    Models.AssetTypeUpdateRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: Asset type ID to update
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        prePrompt:
+          type: string
+        postPrompt:
+          type: string
+        model:
+          type: string
+        modelSettings:
+          type: object
+          additionalProperties: {}
+        loraId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          nullable: true
+          description: LoRA ID, null to clear, or undefined to leave unchanged
+        referenceImages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Models.StorageId'
+        qualityPreset:
+          type: string
+        isActive:
+          type: boolean
+      description: Request to update an existing asset type
+    Models.ConvexId:
+      type: string
+      description: Convex document ID (opaque string)
+    Models.GenerateRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Text description of the image to generate
+        asset_type:
+          type: string
+          description: Type of asset to generate
+        model:
+          type: string
+          description: Model ID (e.g., 'hidream', 'replicate:flux-2-max')
+        quality:
+          allOf:
+            - $ref: '#/components/schemas/Models.QualityPreset'
+          description: Quality preset
+        imageCount:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 4
+          description: Number of variations (1-4)
+        lora:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: LoRA ID for styled generation
+        asset_type_id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: Asset Type ID for reference images
+      description: Request to generate images
+    Models.GenerateResponse:
+      type: object
+      required:
+        - job
+        - estimated_seconds
+      properties:
+        job:
+          allOf:
+            - $ref: '#/components/schemas/Models.Job'
+          description: Created job
+        estimated_seconds:
+          type: integer
+          format: int32
+          description: Estimated seconds until completion
+      description: Response from generation endpoint
+    Models.GeneratedImage:
+      type: object
+      required:
+        - id
+        - url
+      properties:
+        id:
+          type: string
+          description: Unique image ID
+        url:
+          type: string
+          description: Public URL to the image
+        width:
+          type: integer
+          format: int32
+          description: Image width in pixels
+        height:
+          type: integer
+          format: int32
+          description: Image height in pixels
+        mime_type:
+          type: string
+          description: MIME type (image/png, image/webp, etc)
+      description: Generated image result
+    Models.Job:
+      type: object
+      required:
+        - id
+        - status
+        - prompt
+        - asset_type
+        - model
+        - quality
+        - imageCount
+        - progress
+        - images
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique job ID (UUID)
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Models.JobStatus'
+          description: Current job status
+        prompt:
+          type: string
+          description: Original prompt
+        asset_type:
+          type: string
+          description: Asset type used
+        model:
+          type: string
+          description: Model used for generation
+        quality:
+          allOf:
+            - $ref: '#/components/schemas/Models.QualityPreset'
+          description: Quality preset used
+        imageCount:
+          type: integer
+          format: int32
+          description: Number of images requested
+        progress:
+          type: integer
+          format: int32
+          description: Progress percentage 0-100
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/Models.GeneratedImage'
+          description: Generated images (when completed)
+        error_message:
+          type: string
+          description: Error message if failed
+        lora_id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: LoRA ID if styled generation
+        asset_type_id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: Asset Type ID for reference images
+        created_at:
+          type: string
+          description: Creation timestamp ISO string
+        completed_at:
+          type: string
+          description: Completion timestamp ISO string
+      description: Image generation job
+    Models.JobStatus:
+      type: string
+      enum:
+        - queued
+        - processing
+        - completed
+        - failed
+        - cancelled
+      description: Job processing status
+    Models.Lora:
+      type: object
+      required:
+        - _id
+        - name
+        - triggerWord
+        - baseModel
+        - steps
+        - status
+      properties:
+        _id:
+          allOf:
+            - $ref: '#/components/schemas/Models.ConvexId'
+          description: Convex document ID
+        name:
+          type: string
+          description: Display name
+        triggerWord:
+          type: string
+          description: Word to include in prompts to activate this style
+        baseModel:
+          type: string
+          description: 'Base model: flux or sdxl'
+        steps:
+          type: integer
+          format: int32
+          description: Number of training steps
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Models.LoraStatus'
+          description: Current status
+        isActive:
+          type: boolean
+          description: Whether available for generation. Must be true to use.
+        replicateTrainingId:
+          type: string
+          description: Replicate training job ID
+        loraUrl:
+          type: string
+          description: URL to trained weights (after training completes)
+        fireworksModelId:
+          type: string
+          description: Fireworks model ID (after deployment)
+        progress:
+          type: number
+          format: float
+          description: Training progress 0-100
+        currentStep:
+          type: integer
+          format: int32
+          description: Current training step
+        trainStartedAt:
+          allOf:
+            - $ref: '#/components/schemas/Models.Timestamp'
+          description: Timestamp when training started
+        completedAt:
+          allOf:
+            - $ref: '#/components/schemas/Models.Timestamp'
+          description: Timestamp when training completed
+        errorMessage:
+          type: string
+          description: Error message if failed
+        errorCode:
+          type: string
+          description: Error code if failed
+        description:
+          type: string
+          description: Description/notes
+      description: LoRA model for styled image generation
+    Models.LoraCreateRequest:
+      type: object
+      required:
+        - name
+        - triggerWord
+      properties:
+        name:
+          type: string
+        triggerWord:
+          type: string
+        baseModel:
+          type: string
+        steps:
+          type: integer
+          format: int32
+      description: Request to create a new LoRA
+    Models.LoraStatus:
+      type: string
+      enum:
+        - created
+        - uploading
+        - ready_to_train
+        - training
+        - completed
+        - deployment_pending
+        - deployment_failed
+        - failed
+        - deployed
+      description: LoRA training and deployment status
+    Models.LoraSyncResponse:
+      type: object
+      required:
+        - lora_id
+        - replicate_status
+        - new_status
+      properties:
+        lora_id:
+          $ref: '#/components/schemas/Models.ConvexId'
+        replicate_status:
+          type: string
+        new_status:
+          $ref: '#/components/schemas/Models.LoraStatus'
+        lora_url:
+          type: string
+      description: Response from sync endpoint
+    Models.LoraUpdateRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          $ref: '#/components/schemas/Models.ConvexId'
+        status:
+          $ref: '#/components/schemas/Models.LoraStatus'
+        isActive:
+          type: boolean
+        loraUrl:
+          type: string
+        fireworksModelId:
+          type: string
+        progress:
+          type: number
+          format: float
+        currentStep:
+          type: integer
+          format: int32
+        trainStartedAt:
+          $ref: '#/components/schemas/Models.Timestamp'
+        completedAt:
+          $ref: '#/components/schemas/Models.Timestamp'
+        errorMessage:
+          type: string
+        errorCode:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        replicateTrainingId:
+          type: string
+      description: Request to update a LoRA
+    Models.QualityPreset:
+      type: string
+      enum:
+        - draft
+        - standard
+        - high
+      description: Quality preset affecting speed vs quality tradeoff
+    Models.StorageId:
+      type: string
+      description: Convex storage ID for uploaded files
+    Models.Timestamp:
+      type: integer
+      format: int64
+      description: Unix timestamp in milliseconds
