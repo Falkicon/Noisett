@@ -498,7 +498,7 @@ class ReplicateGenerator(ImageGenerator):
             return {
                 "prompt": prompt,
                 "aspect_ratio": aspect_ratio,
-                "megapixels": resolution,  # FLUX 2 API param is 'megapixels' but value is like "1 MP"
+                "resolution": resolution,  # FLUX 2 API uses 'resolution' param with values like "1 MP", "4 MP"
                 "safety_tolerance": safety_tolerance,
                 "output_format": output_format,
                 "output_quality": output_quality_setting,
@@ -746,7 +746,7 @@ class ReplicateGenerator(ImageGenerator):
                     "prompt": enhanced_prompt,
                     "input_images": reference_urls,
                     "aspect_ratio": aspect_ratio,
-                    "megapixels": resolution,
+                    "resolution": resolution,  # FLUX 2 API uses 'resolution' not 'megapixels'
                     "safety_tolerance": safety_tolerance,
                     "output_format": output_format,
                     "output_quality": output_quality_setting,
