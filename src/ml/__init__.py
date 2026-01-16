@@ -486,27 +486,19 @@ class ReplicateGenerator(ImageGenerator):
             # Get modelSettings from asset type (passed via model_config._modelSettings)
             model_settings = model_config.get("_modelSettings", {}) if model_config else {}
             
-            # Use modelSettings values, fall back to defaults
-            megapixels = model_settings.get("megapixels", "1")  # "0.25", "1", "4"
-            aspect_ratio = model_settings.get("aspectRatio", "1:1")
-            safety_tolerance = model_settings.get("safetyTolerance", 2)
-            output_format = model_settings.get("outputFormat", "webp")
-            output_quality_setting = model_settings.get("outputQuality", 80)
+            # Use modelSettings values (keys match what frontend saves: resolution, aspect_ratio, etc.)
+            resolution = model_settings.get("resolution", "1 MP")  # "0.5 MP", "1 MP", "2 MP", "4 MP"
+            aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+            safety_tolerance = model_settings.get("safety_tolerance", 2)
+            output_format = model_settings.get("output_format", "webp")
+            output_quality_setting = model_settings.get("output_quality", 80)
             
-            # Map megapixels to FLUX 2 resolution format
-            mp_to_resolution = {
-                "0.25": "0.5 MP",
-                "1": "1 MP",
-                "4": "4 MP",
-            }
-            resolution = mp_to_resolution.get(str(megapixels), "1 MP")
-            
-            print(f"[FLUX2] modelSettings: megapixels={megapixels}, resolution={resolution}, aspect_ratio={aspect_ratio}")
+            print(f"[FLUX2] modelSettings: resolution={resolution}, aspect_ratio={aspect_ratio}, output_quality={output_quality_setting}")
             
             return {
                 "prompt": prompt,
                 "aspect_ratio": aspect_ratio,
-                "megapixels": resolution,
+                "megapixels": resolution,  # FLUX 2 API param is 'megapixels' but value is like "1 MP"
                 "safety_tolerance": safety_tolerance,
                 "output_format": output_format,
                 "output_quality": output_quality_setting,
@@ -741,18 +733,14 @@ class ReplicateGenerator(ImageGenerator):
                 # Get modelSettings from asset type (passed via model_config._modelSettings)
                 model_settings = model_config.get("_modelSettings", {}) if model_config else {}
                 
-                # Use modelSettings values, fall back to defaults
-                megapixels = model_settings.get("megapixels", "1")
-                aspect_ratio = model_settings.get("aspectRatio", "1:1")
-                safety_tolerance = model_settings.get("safetyTolerance", 2)
-                output_format = model_settings.get("outputFormat", "webp")
-                output_quality_setting = model_settings.get("outputQuality", 80)
+                # Use modelSettings values (snake_case keys match frontend storage)
+                resolution = model_settings.get("resolution", "1 MP")
+                aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+                safety_tolerance = model_settings.get("safety_tolerance", 2)
+                output_format = model_settings.get("output_format", "webp")
+                output_quality_setting = model_settings.get("output_quality", 80)
                 
-                # Map megapixels to FLUX 2 resolution format
-                mp_to_resolution = {"0.25": "0.5 MP", "1": "1 MP", "4": "4 MP"}
-                resolution = mp_to_resolution.get(str(megapixels), "1 MP")
-                
-                print(f"[FLUX2+REF] modelSettings: megapixels={megapixels}, resolution={resolution}")
+                print(f"[FLUX2+REF] modelSettings: resolution={resolution}, aspect_ratio={aspect_ratio}")
                 
                 input_params = {
                     "prompt": enhanced_prompt,
