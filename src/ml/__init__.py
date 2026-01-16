@@ -516,14 +516,34 @@ class ReplicateGenerator(ImageGenerator):
             }
 
         # ByteDance Seedream 4.5
-        # Params: prompt, image_input[], size (2K/4K/custom), aspect_ratio
+        # Params: prompt, image_input[], size (2K/4K/custom), aspect_ratio, width, height
         if "seedream" in model_lower or "bytedance" in model_lower:
-            size_map = {"draft": "2K", "standard": "2K", "high": "4K"}
-            return {
+            # Get modelSettings from asset type (passed via model_config._modelSettings)
+            model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+            
+            # Use modelSettings values (snake_case keys match frontend storage)
+            size = model_settings.get("size", "2K")  # "2K", "4K"
+            aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+            width = model_settings.get("width")
+            height = model_settings.get("height")
+            max_images = model_settings.get("max_images", 1)
+            
+            print(f"[SEEDREAM] modelSettings: size={size}, aspect_ratio={aspect_ratio}")
+            
+            params = {
                 "prompt": prompt,
-                "aspect_ratio": "1:1",
-                "size": size_map.get(quality.value, "2K"),
+                "aspect_ratio": aspect_ratio,
+                "size": size,
+                "max_images": max_images,
+                "sequential_image_generation": "disabled",
             }
+            
+            # Add width/height if custom dimensions specified
+            if width and height:
+                params["width"] = width
+                params["height"] = height
+            
+            return params
 
         # Qwen Image
         # Params: prompt, seed, go_fast, guidance, image_size, aspect_ratio, output_format, num_inference_steps
@@ -754,13 +774,29 @@ class ReplicateGenerator(ImageGenerator):
                 }
             # Seedream - uses image_input
             elif "seedream" in model_lower or "bytedance" in model_lower:
-                size_map = {"draft": "2K", "standard": "2K", "high": "4K"}
+                # Get modelSettings from asset type (passed via model_config._modelSettings)
+                model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+                
+                size = model_settings.get("size", "2K")
+                aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+                width = model_settings.get("width")
+                height = model_settings.get("height")
+                max_images = model_settings.get("max_images", 1)
+                
+                print(f"[SEEDREAM+REF] modelSettings: size={size}, aspect_ratio={aspect_ratio}")
+                
                 input_params = {
                     "prompt": enhanced_prompt,
                     "image_input": reference_urls,
-                    "aspect_ratio": "1:1",
-                    "size": size_map.get(quality.value, "2K"),
+                    "aspect_ratio": aspect_ratio,
+                    "size": size,
+                    "max_images": max_images,
+                    "sequential_image_generation": "disabled",
                 }
+                
+                if width and height:
+                    input_params["width"] = width
+                    input_params["height"] = height
             # Default: FLUX-style parameters
             else:
                 input_params = {
