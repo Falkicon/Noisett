@@ -102,6 +102,23 @@ npm run dev:api      # Python API only (port 8000)
 
 ---
 
+## API Contracts (Agent-First Reference)
+
+**Before making API calls, read [`docs/api-contracts.md`](docs/api-contracts.md).**
+
+This document is the **single source of truth** for:
+- All endpoint request/response schemas
+- Edge cases (null vs undefined, optional fields)
+- Common error patterns and fixes
+- Convex validator requirements
+
+**Common issues this prevents:**
+- `ArgumentValidationError: Object contains extra field` → Field not in Convex validator
+- `LoRA is not active` → Need to call `/api/lora/{id}/sync` after training
+- Type mismatches between frontend and backend
+
+---
+
 ## Quick Start
 
 ### CLI (Primary Development Interface)
