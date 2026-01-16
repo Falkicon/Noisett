@@ -483,14 +483,33 @@ class ReplicateGenerator(ImageGenerator):
         # FLUX.2 [max] - different from FLUX.1 dev-lora
         # Params: prompt, input_images[], aspect_ratio, resolution, safety_tolerance, seed, output_format
         if "flux-2" in model_lower or "flux.2" in model_lower:
-            resolution_map = {"draft": "1 MP", "standard": "2 MP", "high": "4 MP"}
+            # Get modelSettings from asset type (passed via model_config._modelSettings)
+            model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+            
+            # Use modelSettings values, fall back to defaults
+            megapixels = model_settings.get("megapixels", "1")  # "0.25", "1", "4"
+            aspect_ratio = model_settings.get("aspectRatio", "1:1")
+            safety_tolerance = model_settings.get("safetyTolerance", 2)
+            output_format = model_settings.get("outputFormat", "webp")
+            output_quality_setting = model_settings.get("outputQuality", 80)
+            
+            # Map megapixels to FLUX 2 resolution format
+            mp_to_resolution = {
+                "0.25": "0.5 MP",
+                "1": "1 MP",
+                "4": "4 MP",
+            }
+            resolution = mp_to_resolution.get(str(megapixels), "1 MP")
+            
+            print(f"[FLUX2] modelSettings: megapixels={megapixels}, resolution={resolution}, aspect_ratio={aspect_ratio}")
+            
             return {
                 "prompt": prompt,
-                "aspect_ratio": "1:1",
-                "resolution": resolution_map.get(quality.value, "2 MP"),
-                "safety_tolerance": 2,  # 1=strict, 5=permissive
-                "output_format": "webp",
-                "output_quality": output_quality,
+                "aspect_ratio": aspect_ratio,
+                "megapixels": resolution,
+                "safety_tolerance": safety_tolerance,
+                "output_format": output_format,
+                "output_quality": output_quality_setting,
                 "seed": seed,
             }
 
@@ -719,15 +738,30 @@ class ReplicateGenerator(ImageGenerator):
                 }
             # FLUX.2 [max] - uses input_images
             elif "flux-2" in model_lower or "flux.2" in model_lower:
-                resolution_map = {"draft": "1 MP", "standard": "2 MP", "high": "4 MP"}
+                # Get modelSettings from asset type (passed via model_config._modelSettings)
+                model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+                
+                # Use modelSettings values, fall back to defaults
+                megapixels = model_settings.get("megapixels", "1")
+                aspect_ratio = model_settings.get("aspectRatio", "1:1")
+                safety_tolerance = model_settings.get("safetyTolerance", 2)
+                output_format = model_settings.get("outputFormat", "webp")
+                output_quality_setting = model_settings.get("outputQuality", 80)
+                
+                # Map megapixels to FLUX 2 resolution format
+                mp_to_resolution = {"0.25": "0.5 MP", "1": "1 MP", "4": "4 MP"}
+                resolution = mp_to_resolution.get(str(megapixels), "1 MP")
+                
+                print(f"[FLUX2+REF] modelSettings: megapixels={megapixels}, resolution={resolution}")
+                
                 input_params = {
                     "prompt": enhanced_prompt,
                     "input_images": reference_urls,
-                    "aspect_ratio": "1:1",
-                    "resolution": resolution_map.get(quality.value, "2 MP"),
-                    "safety_tolerance": 2,  # 1=strict, 5=permissive
-                    "output_format": "webp",
-                    "output_quality": output_quality,
+                    "aspect_ratio": aspect_ratio,
+                    "megapixels": resolution,
+                    "safety_tolerance": safety_tolerance,
+                    "output_format": output_format,
+                    "output_quality": output_quality_setting,
                     "seed": seed,
                 }
             # Seedream - uses image_input

@@ -194,29 +194,40 @@ async def process_job(job_id: str):
             reference_urls = []
             model_config = None
 
-            # Try to get asset type reference images from Convex
+            # Try to get asset type reference images and modelSettings from Convex
             if hasattr(job, 'asset_type_id') and job.asset_type_id:
                 try:
                     from src.core.convex_client import get_convex_client
                     convex_client = get_convex_client()
                     asset_type_data = await convex_client.get_asset_type(job.asset_type_id)
-                    if asset_type_data and asset_type_data.get("referenceImages"):
+                    if asset_type_data:
+                        # Extract modelSettings for size/quality control
+                        model_settings = asset_type_data.get("modelSettings", {})
+                        if model_settings:
+                            debug_log(f"[PROCESS_JOB] modelSettings: {model_settings}")
+                        
                         # Get model config to check if it supports reference images
                         from src.ml.registry import list_models
                         models = list_models()
                         model_config = models.get(asset_type_data.get("model", ""))
-
-                        if model_config and model_config.get("capabilities", {}).get("maxReferenceImages", 0) > 0:
-                            # Fetch URLs for reference images
-                            for storage_id in asset_type_data["referenceImages"]:
-                                try:
-                                    url = await convex_client.get_storage_url(storage_id)
-                                    if url:
-                                        reference_urls.append(url)
-                                except Exception as e:
-                                    debug_log(f"[PROCESS_JOB] Failed to get reference image URL: {e}")
-                            if reference_urls:
-                                debug_log(f"[PROCESS_JOB] Using {len(reference_urls)} reference images")
+                        
+                        # Attach modelSettings to model_config for passthrough
+                        if model_config:
+                            model_config = dict(model_config)  # Make a copy
+                            model_config["_modelSettings"] = model_settings
+                        
+                        if asset_type_data.get("referenceImages"):
+                            if model_config and model_config.get("capabilities", {}).get("maxReferenceImages", 0) > 0:
+                                # Fetch URLs for reference images
+                                for storage_id in asset_type_data["referenceImages"]:
+                                    try:
+                                        url = await convex_client.get_storage_url(storage_id)
+                                        if url:
+                                            reference_urls.append(url)
+                                    except Exception as e:
+                                        debug_log(f"[PROCESS_JOB] Failed to get reference image URL: {e}")
+                                if reference_urls:
+                                    debug_log(f"[PROCESS_JOB] Using {len(reference_urls)} reference images")
                 except Exception as e:
                     debug_log(f"[PROCESS_JOB] Failed to get asset type for reference images: {e}")
 
