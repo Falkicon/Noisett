@@ -166,18 +166,18 @@ function renderHistorySidebar() {
           <div class="history-sidebar-prompt">${item.userPrompt || item.prompt || ''}</div>
           <div class="history-sidebar-meta">
             <span>${formatRelativeTime(item.createdAt || item.created_at)}</span>
+            <div class="history-sidebar-actions" onclick="event.stopPropagation()">
+              <button class="history-action-btn ${isFavorite ? 'favorited' : ''}" onclick="toggleHistoryFavorite('${item._id || item.id}')" title="Favorite">
+                ${isFavorite ? '★' : '☆'}
+              </button>
+              <button class="history-action-btn" onclick="regenerateFromHistory('${item._id || item.id}')" title="Regenerate">
+                ↻
+              </button>
+              <button class="history-action-btn delete" onclick="deleteHistoryItem('${item._id || item.id}')" title="Delete">
+                ×
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="history-sidebar-actions" onclick="event.stopPropagation()">
-          <button class="history-action-btn ${isFavorite ? 'favorited' : ''}" onclick="toggleHistoryFavorite('${item._id || item.id}')" title="Favorite">
-            ${isFavorite ? '★' : '☆'}
-          </button>
-          <button class="history-action-btn" onclick="regenerateFromHistory('${item._id || item.id}')" title="Regenerate">
-            ↻
-          </button>
-          <button class="history-action-btn delete" onclick="deleteHistoryItem('${item._id || item.id}')" title="Delete">
-            ×
-          </button>
         </div>
       </div>
     `;
