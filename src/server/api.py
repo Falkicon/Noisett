@@ -743,6 +743,86 @@ async def list_training_images(lora_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/lora/{lora_id}/train")
+async def start_lora_training(lora_id: str, background_tasks: BackgroundTasks):
+    """Start LoRA training on Replicate.
+    
+    Exports training images to zip, uploads to storage, and starts Replicate training.
+    Returns training job ID for SSE progress monitoring.
+    """
+    from src.ml.training import export_training_images_to_zip, start_replicate_training
+    
+    try:
+        convex = get_convex_client()
+        
+        # Verify LoRA exists
+        lora = await convex.get_lora(lora_id)
+        if not lora:
+            raise HTTPException(status_code=404, detail=f"LoRA '{lora_id}' not found")
+        
+        # Check if already training
+        if lora.get("status") in ["training", "completed", "deployed"]:
+            return {"success": False, "error": {"message": f"LoRA is already {lora['status']}"}}
+        
+        # Check API token is configured
+        api_token = os.getenv("REPLICATE_API_KEY") or os.getenv("REPLICATE_API_TOKEN")
+        if not api_token:
+            return {
+                "success": False,
+                "error": {
+                    "message": "REPLICATE_API_TOKEN not configured",
+                    "suggestion": "Add REPLICATE_API_TOKEN to .env file"
+                }
+            }
+        
+        # Update status to uploading
+        await convex.update_lora(lora_id, {"status": "uploading"})
+        
+        # Export images to zip and upload to storage
+        try:
+            zip_url = await export_training_images_to_zip(lora_id)
+        except ValueError as e:
+            await convex.update_lora(lora_id, {"status": "failed", "errorMessage": str(e)})
+            return {"success": False, "error": {"message": str(e)}}
+        
+        # Check webhook secret (optional for local dev)
+        webhook_secret = os.getenv("REPLICATE_WEBHOOK_SECRET")
+        if not webhook_secret:
+            logging.warning("REPLICATE_WEBHOOK_SECRET not set - training progress updates won't work")
+        
+        # Start Replicate training
+        try:
+            await convex.update_lora(lora_id, {"status": "training"})
+            training_id = await start_replicate_training(
+                lora_id=lora_id,
+                zip_url=zip_url,
+                trigger_word=lora["triggerWord"],
+                steps=lora.get("steps", 1000)
+            )
+            
+            # Save training ID to Convex
+            await convex.update_lora(lora_id, {"replicateTrainingId": training_id})
+            
+            return {
+                "success": True,
+                "data": {
+                    "lora_id": lora_id,
+                    "training_id": training_id,
+                    "status": "training",
+                    "message": "Training started! Monitor progress with SSE endpoint."
+                }
+            }
+        except ValueError as e:
+            await convex.update_lora(lora_id, {"status": "failed", "errorMessage": str(e)})
+            return {"success": False, "error": {"message": str(e)}}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to start training: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Model Endpoints ---
 
 

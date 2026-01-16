@@ -138,39 +138,61 @@ async def start_replicate_training(
 
     if not api_token:
         raise ValueError("REPLICATE_API_KEY environment variable is required")
-    if not webhook_secret:
-        raise ValueError("REPLICATE_WEBHOOK_SECRET environment variable is required")
 
-    # Configure webhook URL
-    webhook_url = f"{webhook_base_url}/api/webhooks/replicate/training"
+    # Use the fast-flux-trainer (faster than ostris/flux-dev-lora-trainer)
+    # See: https://replicate.com/replicate/fast-flux-trainer/train
+    training_model = "replicate/fast-flux-trainer"
+    training_version = "8b10794665aed907bb98a1a5324cd1d3a8bea0e9b31e65210967fb9c9e2e08ed"
+    
+    # Get Replicate username for destination (required)
+    replicate_owner = os.getenv("REPLICATE_OWNER")
+    if not replicate_owner:
+        raise ValueError("REPLICATE_OWNER environment variable is required")
+    
+    model_name = f"lora-{lora_id[:8]}"
+    destination = f"{replicate_owner}/{model_name}"
 
-    # Replicate training model for LoRA
-    training_model = "ostris/flux-dev-lora-trainer"
+    # Auto-create destination model if it doesn't exist
+    try:
+        await replicate.models.async_get(destination)
+    except Exception:
+        # Model doesn't exist, create it
+        await replicate.models.async_create(
+            owner=replicate_owner,
+            name=model_name,
+            visibility="private",
+            hardware="gpu-t4",
+            description=f"LoRA fine-tune with trigger word: {trigger_word}"
+        )
 
+    # Fast-flux-trainer uses simpler inputs
     input_data = {
         "input_images": zip_url,
         "trigger_word": trigger_word,
+        "lora_type": "style",  # "subject" for faces/objects, "style" for art styles
         "steps": steps,
-        "lora_rank": 16,
-        "optimizer": "adamw8bit",
-        "learning_rate": 1e-4,
-        "batch_size": 1,
-        "resolution": 512,
-    }
-
-    # Configure webhook
-    webhook_config = {
-        "url": webhook_url,
-        "events": ["start", "output", "logs", "completed"]
     }
 
     try:
-        # Start training job
-        training = await replicate.trainings.async_create(
-            model=training_model,
-            input=input_data,
-            webhook=webhook_config
-        )
+        # Start training job - requires model, version, destination, and input
+        if webhook_secret:
+            webhook_url = f"{webhook_base_url}/api/webhooks/replicate/training"
+            training = await replicate.trainings.async_create(
+                model=training_model,
+                version=training_version,
+                destination=destination,
+                input=input_data,
+                webhook=webhook_url,
+                webhook_events_filter=["start", "output", "logs", "completed"]
+            )
+        else:
+            # No webhook - training will run but progress updates won't be pushed
+            training = await replicate.trainings.async_create(
+                model=training_model,
+                version=training_version,
+                destination=destination,
+                input=input_data
+            )
 
         return training.id
 

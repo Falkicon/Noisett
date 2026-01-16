@@ -766,7 +766,39 @@ async function refreshSelectedLora(loraId) {
 
 function startTraining() {
   if (!state.selectedLora) return;
-  alert('Training would start here. Requires REPLICATE_API_TOKEN to be configured.');
+  
+  // Confirm before starting (costs money)
+  if (!confirm(`Start training "${state.selectedLora.name}"?\n\nThis will take ~20 minutes and cost ~$2.`)) {
+    return;
+  }
+  
+  // Delegate to async core
+  startTrainingCore(state.selectedLora._id);
+}
+
+async function startTrainingCore(loraId) {
+  try {
+    // Show loading state
+    const btn = $('#lora-train-btn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Starting...';
+    btn.disabled = true;
+    
+    const result = await API.request('POST', `/api/lora/${loraId}/train`);
+    
+    if (result.success) {
+      alert(`Training started!\n\nTraining ID: ${result.data.training_id}\n\nThis will take ~20 minutes. The status will update automatically.`);
+      // Refresh LoRA to show updated status
+      await refreshSelectedLora(loraId);
+    } else {
+      showError('Training Failed', result.error?.message || 'Unknown error');
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  } catch (err) {
+    console.error('Training error:', err);
+    showError('Training Failed', err.message || 'Unknown error');
+  }
 }
 
 function deleteLora() {
