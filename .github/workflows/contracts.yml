@@ -1,0 +1,47 @@
+name: Contracts Check
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+
+jobs:
+  contracts:
+    name: Validate Contracts
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install datamodel-code-generator
+      
+      - name: Generate contracts
+        run: npm run contracts:generate
+      
+      - name: Check for drift
+        run: |
+          if [ -n "$(git status --porcelain contracts/generated/)" ]; then
+            echo "❌ Generated contracts are out of sync!"
+            echo "Run 'npm run contracts:generate' and commit the changes."
+            git diff contracts/generated/
+            exit 1
+          fi
+          echo "✅ Contracts are in sync"

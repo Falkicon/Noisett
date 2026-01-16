@@ -1,0 +1,14 @@
+#!/bin/sh
+# Pre-commit hook: Regenerate contracts if .tsp files changed
+
+# Check if any .tsp files are staged
+TSP_CHANGED=$(git diff --cached --name-only | grep '\.tsp$' || true)
+
+if [ -n "$TSP_CHANGED" ]; then
+    echo "TypeSpec files changed, regenerating contracts..."
+    npm run contracts:generate
+    
+    # Stage the regenerated files
+    git add contracts/generated/
+    echo "✔ Contracts regenerated and staged"
+fi
