@@ -777,62 +777,82 @@ function startTraining() {
   // Confirm before starting (costs money)
   if (!confirm(`Start training "${state.selectedLora.name}"?\n\nThis will take ~20 minutes and cost ~$2.`)) {
     return;
-  }
-  
-  // Delegate to async core
-  startTrainingCore(state.selectedLora._id);
-}
-
-async function startTrainingCore(loraId) {
-  try {
-    // Show loading state
-    const btn = $('#lora-train-btn');
-    const originalText = btn.textContent;
-    btn.textContent = 'Starting...';
-    btn.disabled = true;
-    
-    const result = await API.request('POST', `/api/lora/${loraId}/train`);
-    
+  // Delegate to UI wrapper with API call
+  withButtonLoading('#lora-train-btn', 'Starting...', async () => {
+    const result = await startLoraTraining(state.selectedLora._id);
     if (result.success) {
       alert(`Training started!\n\nTraining ID: ${result.data.training_id}\n\nThis will take ~20 minutes. The status will update automatically.`);
-      // Refresh LoRA to show updated status
-      await refreshSelectedLora(loraId);
+      await refreshSelectedLora(state.selectedLora._id);
+      return true; // Keep button in original state (via refresh)
     } else {
       showError('Training Failed', result.error?.message || 'Unknown error');
-      btn.textContent = originalText;
-      btn.disabled = false;
+      return false; // Restore button
     }
+  });
+}
+
+/**
+ * Pure API call - no DOM access
+ * @param {string} loraId 
+ * @returns {Promise<{success: boolean, data?: object, error?: object}>}
+ */
+async function startLoraTraining(loraId) {
+  try {
+    return await API.request('POST', `/api/lora/${loraId}/train`);
   } catch (err) {
     console.error('Training error:', err);
-    showError('Training Failed', err.message || 'Unknown error');
+    return { success: false, error: { message: err.message || 'Unknown error', suggestion: 'Check that the LoRA has training images uploaded' } };
   }
 }
 
-async function syncStatus() {
-  if (!state.selectedLora) return;
+/**
+ * Pure API call - no DOM access
+ * @param {string} loraId 
+ * @returns {Promise<{success: boolean, data?: object, error?: object}>}
+ */
+async function syncLoraStatus(loraId) {
+  try {
+    return await API.request('POST', `/api/lora/${loraId}/sync`);
+  } catch (err) {
+    console.error('Sync error:', err);
+    return { success: false, error: { message: err.message || 'Unknown error', suggestion: 'Check that the training ID is valid on Replicate' } };
+  }
+}
+
+/**
+ * UI wrapper - handles button loading state (sync wrapper for async callback)
+ * @param {string} selector - Button selector
+ * @param {string} loadingText - Text to show while loading
+ * @param {Function} asyncFn - Async function that returns success boolean
+ */
+function withButtonLoading(selector, loadingText, asyncFn) {
+  const btn = $(selector);
+  if (!btn) return;
   
-  const btn = $('#lora-sync-btn');
   const originalText = btn.textContent;
-  btn.textContent = 'Syncing...';
+  btn.textContent = loadingText;
   btn.disabled = true;
   
-  try {
-    const result = await API.request('POST', `/api/lora/${state.selectedLora._id}/sync`);
+  // Call async function and restore button when done
+  asyncFn().finally(() => {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  });
+}
+
+function syncStatus() {
+  if (!state.selectedLora) return;
+  
+  withButtonLoading('#lora-sync-btn', 'Syncing...', async () => {
+    const result = await syncLoraStatus(state.selectedLora._id);
     
     if (result.success) {
-      alert(`Status synced!\n\nReplicate status: ${result.data.replicate_status}\nNew status: ${result.data.new_status}${result.data.weights_url ? '\n\nWeights URL saved!' : ''}`);
-      // Refresh LoRA to show updated status
+      alert(`Status synced!\n\nReplicate status: ${result.data.replicate_status}\nNew status: ${result.data.new_status}${result.data.lora_url ? '\n\nWeights URL saved!' : ''}`);
       await refreshSelectedLora(state.selectedLora._id);
     } else {
       showError('Sync Failed', result.error?.message || 'Unknown error');
     }
-  } catch (err) {
-    console.error('Sync error:', err);
-    showError('Sync Failed', err.message || 'Unknown error');
-  } finally {
-    btn.textContent = originalText;
-    btn.disabled = false;
-  }
+  });
 }
 
 function deleteLora() {
