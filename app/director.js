@@ -777,6 +777,8 @@ function startTraining() {
   // Confirm before starting (costs money)
   if (!confirm(`Start training "${state.selectedLora.name}"?\n\nThis will take ~20 minutes and cost ~$2.`)) {
     return;
+  }
+  
   // Delegate to UI wrapper with API call
   withButtonLoading('#lora-train-btn', 'Starting...', async () => {
     const result = await startLoraTraining(state.selectedLora._id);
