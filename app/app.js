@@ -528,7 +528,7 @@ function setupGenerate() {
 
 /**
  * Read generation form inputs from DOM.
- * @returns {{ userPrompt: string, assetTypeId: string, quality: string, lora: string|null }}
+ * @returns {{ userPrompt: string, assetTypeId: string, lora: string|null }}
  */
 function getGenerationFormValues() {
   const assetType = state.currentAssetType;
@@ -542,7 +542,6 @@ function getGenerationFormValues() {
   return {
     userPrompt: $('#prompt').value.trim(),
     assetTypeId: $('#asset-type').value,
-    quality: assetType?.qualityPreset || $('#quality').value,
     lora,
   };
 }
@@ -569,7 +568,7 @@ function startGeneration() {
 }
 
 async function performGeneration(formValues) {
-  const { userPrompt, assetTypeId, quality, lora } = formValues;
+  const { userPrompt, assetTypeId, lora } = formValues;
   const assetType = state.currentAssetType;
 
   // Build combined prompt from Asset Type pre/post prompts
@@ -597,14 +596,14 @@ async function performGeneration(formValues) {
     assetTypeSlug,
     assetTypeId: convexAssetTypeId,
     model,
-    quality,
     lora,
     modelSettings: assetType?.modelSettings,
   });
 
   // Use combined prompt for generation (applies Asset Type's pre/post prompts)
   // Pass assetTypeId for reference images, model from Asset Type settings
-  const result = await API.generate(combinedPrompt, assetTypeSlug, quality, 1, lora, convexAssetTypeId, model);
+  // Quality is now determined by modelSettings stored in asset type
+  const result = await API.generate(combinedPrompt, assetTypeSlug, 'standard', 1, lora, convexAssetTypeId, model);
 
   if (!result.success) {
     console.error('[DEBUG] Generation error:', result.error);

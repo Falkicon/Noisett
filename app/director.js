@@ -407,7 +407,6 @@ function showEditor() {
   $('#asset-type-model').value = modelFromAssetType ?? defaultModel;
   
   $('#asset-type-lora').value = at?.loraId || '';
-  $('#asset-type-quality').value = at?.qualityPreset || '';
   $('#asset-type-active').checked = at?.isActive ?? true;
 
   // Update dependent UI
@@ -489,7 +488,6 @@ function collectAssetTypeFormData(name) {
     modelSettings: getModelSettings(),
     // Clear loraId if model doesn't support LoRA (use null to explicitly clear in Convex)
     loraId: supportsLora ? ($('#asset-type-lora').value || null) : null,
-    qualityPreset: $('#asset-type-quality').value || undefined,
     isActive: $('#asset-type-active').checked,
   };
 }
