@@ -65,22 +65,19 @@ async function checkHealth() {
   if (result.success) {
     const health = result.data;
     state.isConnected = health.status !== 'error';
-    updateStatusIndicator(health.status === 'healthy' ? 'connected' : 'degraded');
-    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded');
+    updateStatusBot(health.status === 'healthy');
   } else {
     state.isConnected = false;
-    updateStatusIndicator('error');
-    updateStatusText('Disconnected');
+    updateStatusBot(false);
   }
 }
 
-function updateStatusText(text) {
-  $('#status-text').textContent = text;
-}
-
-function updateStatusIndicator(status) {
-  const dot = $('#status-indicator');
-  dot.className = `status-dot ${status}`;
+function updateStatusBot(isConnected) {
+  const bot = $('#status-bot');
+  if (bot) {
+    bot.src = isConnected ? 'ill-bot-on.png' : 'ill-bot-off.png';
+    bot.alt = isConnected ? 'Connected' : 'Disconnected';
+  }
 }
 
 // === Sidebar Tabs ===
@@ -372,6 +369,8 @@ function setupAssetTypeEditor() {
   $('#cancel-edit-btn').addEventListener('click', hideEditor);
   $('#save-asset-type-btn').addEventListener('click', saveAssetType);
   $('#delete-asset-type-btn').addEventListener('click', deleteAssetType);
+  $('#duplicate-asset-type-btn').addEventListener('click', duplicateAssetType);
+  $('#test-generate-btn').addEventListener('click', testGenerate);
 }
 
 function selectAssetType(id) {
@@ -400,7 +399,9 @@ function showEditor() {
   $('#asset-type-description').value = at?.description || '';
   $('#asset-type-pre-prompt').value = at?.prePrompt || '';
   $('#asset-type-post-prompt').value = at?.postPrompt || '';
-  
+  $('#asset-type-hidden-prompt').value = at?.hiddenPrompt || '';
+  $('#asset-type-tip').value = at?.tip || '';
+
   // AFD: Explicit precedence - asset type model overrides default
   const modelFromAssetType = at?.model ?? null;
   const defaultModel = state.models[0]?.id ?? '';
@@ -414,9 +415,10 @@ function showEditor() {
   updateLoraVisibility();
   updatePromptPreview();
 
-  // All Convex asset types are editable - show save, show delete when editing
+  // All Convex asset types are editable - show save, show delete/duplicate when editing
   $('#save-asset-type-btn').classList.remove('hidden');
   $('#delete-asset-type-btn').classList.toggle('hidden', state.isCreating);
+  $('#duplicate-asset-type-btn').classList.toggle('hidden', state.isCreating);
 }
 
 function hideEditor() {
@@ -431,15 +433,19 @@ function hideEditor() {
 function setupPromptPreview() {
   $('#asset-type-pre-prompt').addEventListener('input', updatePromptPreview);
   $('#asset-type-post-prompt').addEventListener('input', updatePromptPreview);
+  $('#asset-type-hidden-prompt').addEventListener('input', updatePromptPreview);
 }
 
 function updatePromptPreview() {
   const prePrompt = $('#asset-type-pre-prompt').value.trim();
   const postPrompt = $('#asset-type-post-prompt').value.trim();
+  const hiddenPrompt = $('#asset-type-hidden-prompt').value.trim();
 
   const preview = $('#prompt-preview');
   preview.querySelector('.pre-prompt').textContent = prePrompt ? prePrompt + ' ' : '';
-  preview.querySelector('.post-prompt').textContent = postPrompt ? ' ' + postPrompt : '';
+  // No space before post-prompt (typically starts with comma)
+  preview.querySelector('.post-prompt').textContent = postPrompt || '';
+  preview.querySelector('.hidden-prompt').textContent = hiddenPrompt ? ' ' + hiddenPrompt : '';
 }
 
 // === Save/Delete Asset Type ===
@@ -484,6 +490,8 @@ function collectAssetTypeFormData(name) {
     description: $('#asset-type-description').value.trim() || undefined,
     prePrompt: $('#asset-type-pre-prompt').value.trim(),
     postPrompt: $('#asset-type-post-prompt').value.trim(),
+    hiddenPrompt: $('#asset-type-hidden-prompt').value.trim(),
+    tip: $('#asset-type-tip').value.trim() || undefined,
     model: modelId,
     modelSettings: getModelSettings(),
     // Clear loraId if model doesn't support LoRA (use null to explicitly clear in Convex)
@@ -496,9 +504,14 @@ function showError(title, message) {
   alert(`${title}: ${message}`);
 }
 
-function deleteAssetType() {
+async function deleteAssetType() {
   if (!state.selectedAssetType) return;
-  if (!confirm(`Delete "${state.selectedAssetType.name}"? This will deactivate the asset type.`)) return;
+  const confirmed = await showConfirm(
+    'Delete Asset Type',
+    `Delete "${state.selectedAssetType.name}"? This will deactivate the asset type.`,
+    { confirmText: 'Delete', danger: true }
+  );
+  if (!confirmed) return;
   performDeleteAssetType();
 }
 
@@ -510,6 +523,171 @@ async function performDeleteAssetType() {
   } else {
     showError('Failed to delete', result.error?.message || 'Unknown error');
   }
+}
+
+function duplicateAssetType() {
+  if (!state.selectedAssetType) return;
+
+  // Get current name from form
+  const currentName = $('#asset-type-name').value.trim();
+
+  // Collect current form values (in case user made edits)
+  const formData = collectAssetTypeFormData(currentName);
+
+  // Create a duplicate with modified name
+  const duplicateName = `${formData.name} (Copy)`;
+
+  // Switch to create mode with pre-filled values
+  state.isCreating = true;
+  state.selectedAssetType = null;
+  renderAssetTypeList();
+
+  // Show editor and populate with duplicate values
+  $('#editor-empty').classList.add('hidden');
+  $('#lora-editor-panel').classList.add('hidden');
+  $('#editor-panel').classList.remove('hidden');
+
+  // Fill form with duplicated values
+  $('#asset-type-name').value = duplicateName;
+  $('#asset-type-description').value = formData.description || '';
+  $('#asset-type-model').value = formData.model || '';
+  $('#asset-type-pre-prompt').value = formData.prePrompt || '';
+  $('#asset-type-post-prompt').value = formData.postPrompt || '';
+  $('#asset-type-hidden-prompt').value = formData.hiddenPrompt || '';
+  $('#asset-type-lora').value = formData.loraId || '';
+  $('#asset-type-active').checked = formData.isActive ?? true;
+
+  // Update dependent UI
+  updateModelSettings();
+
+  // Restore model settings values
+  if (formData.modelSettings) {
+    for (const [key, value] of Object.entries(formData.modelSettings)) {
+      const input = $(`#setting-${key}`);
+      if (input) {
+        if (input.type === 'checkbox') {
+          input.checked = value;
+        } else {
+          input.value = value;
+        }
+        // Update range value display if applicable
+        const valueDisplay = $(`#setting-${key}-value`);
+        if (valueDisplay) {
+          valueDisplay.textContent = value;
+        }
+      }
+    }
+  }
+
+  updateLoraVisibility();
+  updatePromptPreview();
+
+  // Hide duplicate/delete buttons (we're in create mode now)
+  $('#save-asset-type-btn').classList.remove('hidden');
+  $('#delete-asset-type-btn').classList.add('hidden');
+  $('#duplicate-asset-type-btn').classList.add('hidden');
+}
+
+// === Test Generation ===
+async function testGenerate() {
+  const testPrompt = $('#test-prompt').value.trim();
+  if (!testPrompt) {
+    showError('Missing Prompt', 'Please enter a test prompt');
+    return;
+  }
+
+  const btn = $('#test-generate-btn');
+  const status = $('#test-generate-status');
+  const preview = $('#test-preview');
+  const previewImg = $('#test-preview-img');
+
+  // Build combined prompt from current form values
+  const prePrompt = $('#asset-type-pre-prompt').value.trim();
+  const postPrompt = $('#asset-type-post-prompt').value.trim();
+  const hiddenPrompt = $('#asset-type-hidden-prompt').value.trim();
+
+  let combinedPrompt = '';
+  if (prePrompt) combinedPrompt += prePrompt + ' ';
+  combinedPrompt += testPrompt;
+  if (postPrompt) combinedPrompt += postPrompt;
+  if (hiddenPrompt) combinedPrompt += ' ' + hiddenPrompt;
+
+  // Get model and settings
+  const modelId = $('#asset-type-model').value;
+
+  // Update UI
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  status.textContent = 'Starting generation...';
+  status.className = 'test-status generating';
+  preview.classList.add('hidden');
+
+  try {
+    // Start generation using the API.generate function
+    // Parameters: prompt, assetType, quality, count, lora, assetTypeId, model
+    const result = await API.generate(combinedPrompt, 'product', 'standard', 1, null, null, modelId);
+
+    if (!result.success) {
+      throw new Error(result.error?.message || 'Generation failed');
+    }
+
+    // Extract job ID from various possible structures
+    const jobId = result.data?.job?.id || result.data?.job_id;
+    if (!jobId) {
+      console.error('Generation response:', result.data);
+      throw new Error('No job ID returned');
+    }
+
+    status.textContent = 'Processing...';
+
+    // Poll for completion
+    await pollTestJob(jobId, status, preview, previewImg);
+
+  } catch (err) {
+    status.textContent = err.message;
+    status.className = 'test-status error';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate Preview';
+  }
+}
+
+async function pollTestJob(jobId, status, preview, previewImg) {
+  const maxAttempts = 120; // 2 minutes max
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    const result = await API.getJob(jobId);
+
+    if (!result.success) {
+      throw new Error(result.error?.message || 'Failed to check job status');
+    }
+
+    const job = result.data?.job || result.data;
+
+    if (job.status === 'complete') {
+      if (job.images && job.images.length > 0) {
+        const imageUrl = job.images[0].url.startsWith('http')
+          ? job.images[0].url
+          : `${API.baseUrl}${job.images[0].url}`;
+        previewImg.src = imageUrl;
+        preview.classList.remove('hidden');
+        status.textContent = 'Complete!';
+        status.className = 'test-status';
+      } else {
+        throw new Error('No images in result');
+      }
+      return;
+    } else if (job.status === 'failed') {
+      throw new Error(job.error_message || job.error || 'Generation failed');
+    }
+
+    // Still processing
+    attempts++;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  throw new Error('Generation timed out');
 }
 
 // === LoRA Management ===
@@ -780,13 +958,16 @@ async function refreshSelectedLora(loraId) {
   }
 }
 
-function startTraining() {
+async function startTraining() {
   if (!state.selectedLora) return;
   
   // Confirm before starting (costs money)
-  if (!confirm(`Start training "${state.selectedLora.name}"?\n\nThis will take ~20 minutes and cost ~$2.`)) {
-    return;
-  }
+  const confirmed = await showConfirm(
+    'Start Training',
+    `Start training "${state.selectedLora.name}"?\n\nThis will take ~20 minutes and cost ~$2.`,
+    { confirmText: 'Start Training' }
+  );
+  if (!confirmed) return;
   
   // Delegate to UI wrapper with API call
   withButtonLoading('#lora-train-btn', 'Starting...', async () => {
@@ -866,9 +1047,14 @@ function syncStatus() {
   });
 }
 
-function deleteLora() {
+async function deleteLora() {
   if (!state.selectedLora) return;
-  if (!confirm(`Delete "${state.selectedLora.name}"?`)) return;
+  const confirmed = await showConfirm(
+    'Delete LoRA',
+    `Delete "${state.selectedLora.name}"?`,
+    { confirmText: 'Delete', danger: true }
+  );
+  if (!confirmed) return;
   performDeleteLora();
 }
 
@@ -893,12 +1079,15 @@ function setupReferenceImages() {
 
 // AFD Pattern: Sync wrapper collects DOM, passes to async core
 function handleReferenceFiles(files) {
-  if (!state.selectedAssetType) return;
+  if (!state.selectedAssetType) {
+    showError('No Asset Type Selected', 'Please select an asset type first');
+    return;
+  }
 
   // Sync: Collect all DOM values
   const modelSelect = $('#asset-type-model');
   const modelId = modelSelect ? modelSelect.value : '';
-  
+
   // Delegate to async core with pure data
   handleReferenceFilesCore(files, modelId);
 }
@@ -929,14 +1118,18 @@ async function uploadReferenceImage(file) {
   // 1. Get upload URL from Convex
   const urlResponse = await ConvexAPI.generateUploadUrl();
   if (!urlResponse.success) {
-    console.error('Failed to get upload URL:', urlResponse.error?.message);
+    const msg = urlResponse.error?.message || 'Unknown error';
+    console.error('Failed to get upload URL:', msg);
+    showError('Upload Failed', `Could not get upload URL: ${msg}`);
     return;
   }
 
   // 2. Upload to Convex storage
   const uploadResult = await API.uploadImage(urlResponse.data.uploadUrl, file);
   if (!uploadResult.success) {
-    console.error('Failed to upload image:', uploadResult.error?.message);
+    const msg = uploadResult.error?.message || 'Unknown error';
+    console.error('Failed to upload image:', msg);
+    showError('Upload Failed', `Could not upload image: ${msg}`);
     return;
   }
 
@@ -947,7 +1140,9 @@ async function uploadReferenceImage(file) {
   });
 
   if (!addResult.success) {
-    console.error('Failed to add reference image:', addResult.error?.message);
+    const msg = addResult.error?.message || 'Unknown error';
+    console.error('Failed to add reference image:', msg);
+    showError('Upload Failed', `Could not save reference image: ${msg}`);
   }
 }
 

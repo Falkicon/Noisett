@@ -83,28 +83,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadHistorySidebar();
 });
 
-// === Health Check ===
 async function checkHealth() {
   const result = await API.health();
   if (result.success) {
     const health = result.data;
     state.isConnected = health.status !== 'error';
-    updateStatusIndicator(health.status === 'healthy' ? 'connected' : 'degraded');
-    updateStatusText(health.status === 'healthy' ? 'Ready' : 'Degraded');
+    updateStatusBot(health.status === 'healthy');
   } else {
     state.isConnected = false;
-    updateStatusIndicator('error');
-    updateStatusText('Disconnected');
+    updateStatusBot(false);
   }
 }
 
-function updateStatusText(text) {
-  $('#status-text').textContent = text;
-}
-
-function updateStatusIndicator(status) {
-  const dot = $('#status-indicator');
-  dot.className = `status-dot ${status}`;
+function updateStatusBot(isConnected) {
+  const bot = $('#status-bot');
+  if (bot) {
+    bot.src = isConnected ? 'ill-bot-on.png' : 'ill-bot-off.png';
+    bot.alt = isConnected ? 'Connected' : 'Disconnected';
+  }
 }
 
 // === History Sidebar ===
@@ -250,15 +246,14 @@ function populateRegenerateForm(item) {
   }
 }
 
-function deleteHistoryItem(id) {
-  if (!confirmDelete('generation')) {
-    return;
-  }
+async function deleteHistoryItem(id) {
+  const confirmed = await showConfirm(
+    'Delete Generation',
+    'Are you sure you want to delete this generation?',
+    { confirmText: 'Delete', danger: true }
+  );
+  if (!confirmed) return;
   performDeleteHistoryItem(id);
-}
-
-function confirmDelete(itemType) {
-  return confirm(`Are you sure you want to delete this ${itemType}?`);
 }
 
 async function performDeleteHistoryItem(id) {
@@ -299,6 +294,7 @@ function viewHistoryItem(id) {
       card.innerHTML = `
         <img src="${imageUrl}" alt="Generated image ${idx + 1}">
         <button class="btn-download-corner" onclick="downloadImage('${img.url}')" title="Download">⬇</button>
+        <button class="btn-copy-corner" onclick="copyImageToClipboard('${img.url}')" title="Copy to clipboard">📋</button>
       `;
       $('#results-grid').appendChild(card);
     });
@@ -337,6 +333,7 @@ const DEFAULT_ASSET_TYPES = [
     name: 'Product Illustrations',
     prePrompt: 'A clean, modern product illustration of',
     postPrompt: ', minimalist style, white background, professional lighting',
+    hiddenPrompt: '',
     isActive: true,
   },
   {
@@ -344,6 +341,7 @@ const DEFAULT_ASSET_TYPES = [
     name: 'Icons (Fluent 2)',
     prePrompt: 'A Fluent 2 design system icon of',
     postPrompt: ', simple shapes, consistent stroke width, monochrome',
+    hiddenPrompt: '',
     isActive: true,
   },
   {
@@ -351,6 +349,7 @@ const DEFAULT_ASSET_TYPES = [
     name: 'Logo Illustrations',
     prePrompt: 'A modern logo design featuring',
     postPrompt: ', vector style, scalable, brand-appropriate',
+    hiddenPrompt: '',
     isActive: true,
   },
   {
@@ -358,6 +357,7 @@ const DEFAULT_ASSET_TYPES = [
     name: 'Premium Illustrations',
     prePrompt: 'A premium, high-quality illustration of',
     postPrompt: ', detailed, artistic, publication-ready',
+    hiddenPrompt: '',
     isActive: true,
   },
 ];
@@ -446,48 +446,69 @@ function setupPromptBuilder() {
   if (promptInput) {
     promptInput.addEventListener('input', updateCombinedPromptPreview);
   }
+
+  // Initial call to show placeholder
+  updateRestatementPreview();
 }
 
 /**
  * Update the prompt builder UI with current asset type's pre/post prompts
  */
 function updatePromptBuilder() {
-  const prePromptLabel = $('#pre-prompt-label');
-  const postPromptLabel = $('#post-prompt-label');
-
-  if (state.currentAssetType) {
-    if (prePromptLabel) {
-      prePromptLabel.textContent = state.currentAssetType.prePrompt || '';
-    }
-    if (postPromptLabel) {
-      postPromptLabel.textContent = state.currentAssetType.postPrompt || '';
-    }
-  } else {
-    if (prePromptLabel) prePromptLabel.textContent = '';
-    if (postPromptLabel) postPromptLabel.textContent = '';
-  }
-
-  updateCombinedPromptPreview();
+  updateRestatementPreview();
+  updatePromptTip();
 }
 
 /**
- * Update the combined prompt preview
+ * Update the tip display with current asset type's tip
+ */
+function updatePromptTip() {
+  const tipEl = document.getElementById('prompt-tip');
+  if (tipEl) {
+    tipEl.textContent = state.currentAssetType?.tip || '';
+  }
+}
+
+/**
+ * Update the restatement preview with pre/user/post parts
+ * Pre and post prompts shown in lighter grey, user prompt in white
+ * Shows "..." as placeholder when user hasn't typed anything
+ */
+function updateRestatementPreview() {
+  const preEl = document.getElementById('restatement-pre');
+  const userEl = document.getElementById('restatement-user');
+  const postEl = document.getElementById('restatement-post');
+
+  if (!preEl || !userEl || !postEl) return;
+
+  const userPrompt = document.getElementById('prompt')?.value?.trim() || '';
+  const pre = state.currentAssetType?.prePrompt?.trim() || '';
+  const post = state.currentAssetType?.postPrompt?.trim() || '';
+
+  // Always show content - use placeholder if no user input
+  // No space after user prompt since post-prompt typically starts with comma
+  preEl.textContent = pre ? pre + ' ' : '';
+  userEl.textContent = userPrompt || '_____';
+  postEl.textContent = post || '';
+
+  // Toggle placeholder styling when no user input
+  userEl.classList.toggle('is-placeholder', !userPrompt);
+}
+
+/**
+ * Update the combined prompt preview (calls restatement preview)
  */
 function updateCombinedPromptPreview() {
-  const preview = $('#combined-prompt-preview');
-  const userPrompt = $('#prompt')?.value?.trim() || '';
-
-  if (!preview) return;
-
-  const combined = buildCombinedPrompt(userPrompt);
-  preview.textContent = combined;
+  updateRestatementPreview();
 }
 
 /**
- * Build combined prompt from pre + user + post
+ * Build combined prompt from pre + user + post + hidden
  * Concatenation Rules (from spec 3.2):
- * - Empty pre/post: omit entirely (no leading/trailing space)
- * - Formula: "{pre} {user} {post}".strip()
+ * - Empty pre/post/hidden: omit entirely (no leading/trailing space)
+ * - Formula: "{pre} {user}{post} {hidden}".strip()
+ * - Note: No space before post (typically starts with comma)
+ * - Hidden prompt is appended but not shown in preview
  *
  * @param {string} userPrompt - The user's input prompt
  * @returns {string} The combined prompt
@@ -495,13 +516,17 @@ function updateCombinedPromptPreview() {
 function buildCombinedPrompt(userPrompt) {
   const pre = state.currentAssetType?.prePrompt?.trim() || '';
   const post = state.currentAssetType?.postPrompt?.trim() || '';
+  const hidden = state.currentAssetType?.hiddenPrompt?.trim() || '';
   const user = userPrompt?.trim() || '';
 
-  // Build parts array, filtering out empty strings
-  const parts = [pre, user, post].filter((p) => p.length > 0);
+  // Build prompt: pre + space + user + post (no space) + space + hidden
+  let result = '';
+  if (pre) result += pre + ' ';
+  result += user;
+  if (post) result += post;
+  if (hidden) result += ' ' + hidden;
 
-  // Join with single space and trim
-  return parts.join(' ').trim();
+  return result.trim();
 }
 
 // === Generate Tab ===
@@ -681,6 +706,7 @@ function renderResultsGrid(images) {
     card.innerHTML = `
       <img src="${imageUrl}" alt="Generated image ${idx + 1}">
       <button class="btn-download-corner" onclick="downloadImage('${img.url}')" title="Download">⬇</button>
+        <button class="btn-copy-corner" onclick="copyImageToClipboard('${img.url}')" title="Copy to clipboard">📋</button>
       <div class="image-overlay">
         <button class="btn btn-small btn-secondary" onclick="favoriteImage('${state.currentJob}', ${idx})">Favorite</button>
       </div>
@@ -767,11 +793,52 @@ function showError(title, message) {
   alert(`${title}: ${message}`);
 }
 
-function downloadImage(url) {
-  const a = document.createElement('a');
-  a.href = url.startsWith('http') ? url : `${API.baseUrl}${url}`;
-  a.download = `noisett-${Date.now()}.png`;
-  a.click();
+async function downloadImage(url) {
+  const imageUrl = url.startsWith('http') ? url : `${API.baseUrl}${url}`;
+
+  try {
+    // Fetch image as blob to bypass cross-origin restrictions
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+
+    // Create blob URL and trigger download
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `noisett-${Date.now()}.png`;
+    a.click();
+
+    // Clean up blob URL
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error('Download failed:', err);
+    // Fallback: open in new tab
+    window.open(imageUrl, '_blank');
+  }
+}
+
+async function copyImageToClipboard(url) {
+  const imageUrl = url.startsWith('http') ? url : `${API.baseUrl}${url}`;
+
+  try {
+    // Fetch image as blob
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+
+    // Convert to PNG blob for clipboard compatibility
+    const pngBlob = new Blob([blob], { type: 'image/png' });
+
+    // Copy to clipboard
+    await navigator.clipboard.write([
+      new ClipboardItem({ 'image/png': pngBlob })
+    ]);
+
+    // Brief visual feedback (could be improved with a toast)
+    console.log('Image copied to clipboard');
+  } catch (err) {
+    console.error('Copy to clipboard failed:', err);
+    alert('Failed to copy image to clipboard');
+  }
 }
 
 async function favoriteImage(jobId, imageIndex) {

@@ -64,6 +64,8 @@ export default defineSchema({
     description: v.optional(v.string()),
     prePrompt: v.string(),
     postPrompt: v.string(),
+    hiddenPrompt: v.optional(v.string()), // Appended after post-prompt but not shown in preview
+    tip: v.optional(v.string()),          // User guidance shown below prompt input
     model: v.string(),                    // "replicate:flux-dev-lora"
     modelSettings: v.any(),               // Model-specific params
     loraId: v.optional(v.union(v.id("loras"), v.null())),  // null clears the field

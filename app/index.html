@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fabric UX Image Generator</title>
+  <title>Fabric UX Designer</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,11 +11,10 @@
     <!-- Header -->
     <header class="header">
       <div class="header-brand">
-        <h1>Fabric UX Image Generator</h1>
+        <img src="design-bot.png" alt="Fabric UX Designer" class="header-logo">
       </div>
       <div class="header-status">
-        <span id="status-indicator" class="status-dot"></span>
-        <span id="status-text">Connecting...</span>
+        <img id="status-bot" src="ill-bot-off.png" alt="Status" class="status-bot">
       </div>
       <a id="director-nav" href="director.html" class="btn btn-outline hidden">Director</a>
     </header>
@@ -26,7 +25,7 @@
         <!-- History Sidebar -->
         <aside class="history-sidebar panel">
           <div class="sidebar-header">
-            <h2 class="sidebar-title">History</h2>
+            <h2 class="sidebar-title prompt-title">History</h2>
             <div class="history-filter">
               <button id="filter-all" class="filter-btn active" data-filter="all">All</button>
               <button id="filter-favorites" class="filter-btn" data-filter="favorites">Favorites</button>
@@ -36,7 +35,7 @@
             <!-- History items populated dynamically -->
           </div>
           <div id="history-empty" class="empty-state-small">
-            <span class="empty-icon-small">🖼️</span>
+            <img src="ill-image.png" alt="" class="empty-icon-small">
             <p>No generations yet</p>
           </div>
         </aside>
@@ -45,43 +44,55 @@
         <div class="generation-panel">
           <!-- Input Panel -->
           <div class="panel panel-input">
-            <div class="form-group">
-              <div class="prompt-builder">
-                <span id="pre-prompt-label" class="prompt-label prompt-label-pre"></span>
-                <textarea
-                  id="prompt"
-                  placeholder="A modern illustration of a person collaborating with AI..."
-                  rows="4"
-                ></textarea>
-                <span id="post-prompt-label" class="prompt-label prompt-label-post"></span>
+            <div class="input-split-layout">
+              <!-- Left side: Prompt input -->
+              <div class="input-left">
+                <div class="form-group">
+                  <label class="prompt-title">Prompt</label>
+                  <textarea
+                    id="prompt"
+                    placeholder="blue shield with a white padlock on it"
+                    rows="4"
+                  ></textarea>
+                  <div class="prompt-footer">
+                    <span id="prompt-tip" class="prompt-tip"></span>
+                    <span class="char-count"><span id="char-current">0</span>/500</span>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="asset-type" class="prompt-title">Asset Type</label>
+                    <select id="asset-type">
+                      <option value="product">Product Illustrations</option>
+                      <option value="icons">Icons (Fluent 2)</option>
+                      <option value="logo">Logo Illustrations</option>
+                      <option value="premium">Premium Illustrations</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="generate-row">
+                  <button id="generate-btn" style="width: 150px;" class="btn btn-primary btn-medium">
+                    Generate
+                  </button>
+                  <span class="generate-disclaimer">* AI-generated. Mostly behaves.</span>
+                </div>
               </div>
-              <div class="prompt-builder-footer">
-                <span id="combined-prompt-preview" class="combined-prompt-preview"></span>
-                <span class="char-count"><span id="char-current">0</span>/500</span>
+
+              <!-- Right side: Restatement preview -->
+              <div class="input-right">
+                <div class="restatement-preview">
+                  <span id="restatement-pre" class="restatement-part restatement-pre"></span><span id="restatement-user" class="restatement-part restatement-user"></span><span id="restatement-post" class="restatement-part restatement-post"></span>
+                </div>
               </div>
             </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="asset-type">Asset Type</label>
-                <select id="asset-type">
-                  <option value="product">Product Illustrations</option>
-                  <option value="icons">Icons (Fluent 2)</option>
-                  <option value="logo">Logo Illustrations</option>
-                  <option value="premium">Premium Illustrations</option>
-                </select>
-              </div>
-            </div>
-
-            <button id="generate-btn" style="width: 150px;" class="btn btn-primary btn-medium">
-              Generate
-            </button>
           </div>
 
           <!-- Results Panel -->
           <div class="panel panel-results">
             <div id="results-empty" class="empty-state">
-              <span class="empty-icon">🖼️</span>
+              <img src="ill-image.png" alt="" class="empty-icon">
               <p>Your generated images will appear here</p>
             </div>
             <div id="results-loading" class="loading-state hidden">
@@ -96,6 +107,22 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Confirmation Dialog -->
+  <div id="confirm-dialog" class="modal-overlay hidden">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="confirm-title">Confirm</h3>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-message"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="confirm-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="confirm-ok" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
   </div>
 
   <script src="api.js"></script>

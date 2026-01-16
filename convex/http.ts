@@ -442,6 +442,12 @@ http.route({
 // Storage upload URL endpoint
 http.route({
   path: "/api/storage/generate-upload-url",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
+  path: "/api/storage/generate-upload-url",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const uploadUrl = await ctx.storage.generateUploadUrl();

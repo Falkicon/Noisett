@@ -339,3 +339,91 @@ const ConvexAPI = {
     return this.request('GET', `/api/storage/get-url?storageId=${storageId}`);
   },
 };
+
+// === Confirmation Dialog ===
+/**
+ * Show a custom confirmation dialog.
+ * @param {string} title - Dialog title
+ * @param {string} message - Dialog message (supports newlines)
+ * @param {Object} options - Optional config
+ * @param {string} options.confirmText - Text for confirm button (default: "Confirm")
+ * @param {string} options.cancelText - Text for cancel button (default: "Cancel")
+ * @param {boolean} options.danger - If true, confirm button is red
+ * @returns {Promise<boolean>} - Resolves true if confirmed, false if cancelled
+ */
+function showConfirm(title, message, options = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirm-dialog');
+    const titleEl = document.getElementById('confirm-title');
+    const messageEl = document.getElementById('confirm-message');
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+
+    if (!overlay) {
+      // Fallback to native confirm if dialog not found
+      resolve(confirm(message));
+      return;
+    }
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    okBtn.textContent = options.confirmText || 'Confirm';
+    cancelBtn.textContent = options.cancelText || 'Cancel';
+
+    // Toggle danger style
+    if (options.danger) {
+      okBtn.classList.remove('btn-primary');
+      okBtn.classList.add('btn-danger');
+    } else {
+      okBtn.classList.remove('btn-danger');
+      okBtn.classList.add('btn-primary');
+    }
+
+    // Show dialog
+    overlay.classList.remove('hidden');
+
+    // Cleanup function
+    const cleanup = () => {
+      overlay.classList.add('hidden');
+      okBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlayClick);
+      document.removeEventListener('keydown', onKeydown);
+    };
+
+    const onConfirm = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const onOverlayClick = (e) => {
+      if (e.target === overlay) {
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(false);
+      } else if (e.key === 'Enter') {
+        cleanup();
+        resolve(true);
+      }
+    };
+
+    okBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlayClick);
+    document.addEventListener('keydown', onKeydown);
+
+    // Focus the cancel button for safety
+    cancelBtn.focus();
+  });
+}

@@ -113,6 +113,8 @@ export const create = internalMutation({
     description: v.optional(v.string()),
     prePrompt: v.string(),
     postPrompt: v.string(),
+    hiddenPrompt: v.optional(v.string()), // Appended after post-prompt but not shown in preview
+    tip: v.optional(v.string()),          // User guidance shown below prompt input
     model: v.string(),                    // "replicate:flux-dev-lora"
     modelSettings: v.any(),               // Model-specific params
     loraId: v.optional(v.union(v.id("loras"), v.null())),  // null means no LoRA
@@ -162,6 +164,8 @@ export const update = internalMutation({
     description: v.optional(v.string()),
     prePrompt: v.optional(v.string()),
     postPrompt: v.optional(v.string()),
+    hiddenPrompt: v.optional(v.string()), // Appended after post-prompt but not shown in preview
+    tip: v.optional(v.string()),          // User guidance shown below prompt input
     model: v.optional(v.string()),
     modelSettings: v.optional(v.any()),
     loraId: v.optional(v.union(v.id("loras"), v.null())),  // null clears the field

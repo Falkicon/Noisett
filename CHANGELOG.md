@@ -16,6 +16,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.9.4] - 2026-01-16
+
+### Added
+
+- **Executive Brief** — Comprehensive executive brief document in `docs/brief/executive-brief.md`
+  - Full architecture diagrams (Mermaid): System Architecture, Image Generation Pipeline, Infrastructure, LoRA Training
+  - Platform capabilities, tech stack, model selection guide, deployment details
+  - Rebranded internal name to "Fabric UX Designer"
+
+- **Tip Field** — Asset Types now support a `tip` field
+  - Configurable in Director mode with optional guidance text
+  - Displayed to users below the prompt input in grey italic
+  - Schema updated in Convex (`convex/schema.ts`, `convex/assetTypes.ts`)
+
+- **Custom Confirmation Dialog** — Replaced browser `confirm()` with styled modal
+  - Reusable `showConfirm(title, message, options)` function
+  - Supports custom button text and danger mode (red confirm button)
+  - Keyboard support (Escape to cancel, Enter to confirm)
+  - Click outside to dismiss
+  - Applied to: delete generation, delete asset type, start training, delete LoRA
+
+### Changed
+
+- **Logo Replacement** — Replaced "Fabric Design-o-bot" text header with logo image
+  - Added `design-bot.png` to `app/` directory
+  - Logo displayed at 42px height in header
+  - Updated page titles to "Fabric UX Designer"
+
+- **Status Bot Indicator** — Replaced text status with animated bot images
+  - `ill-bot-on.png` for connected/healthy state
+  - `ill-bot-off.png` for disconnected/error state
+  - 56px height, fixed position
+
+- **Empty State Icons** — Replaced emoji placeholders with custom illustrations
+  - Added `ill-image.png` for empty states and dropzones
+  - Proper image sizing (48px sidebar, 64px main area)
+  - Centered dropzone icons
+
+### Fixed
+
+- **Director Sidebar Spacing** — Added margin above the "+" new asset type button
+- **Textarea Syntax** — Fixed broken HTML in prompt textarea
+
+### UI Refinements
+
+- Prompt footer layout with tip on left, character count on right
+- Modal dialog with blur backdrop and slide-in animation
+- Danger button variant for destructive confirmations
+
+---
+
 ## [0.9.3] - 2026-01-16
 
 ### Changed

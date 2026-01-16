@@ -137,6 +137,13 @@ body {
   letter-spacing: -0.02em;
 }
 
+.header-logo {
+  height: 42px;
+  width: auto;
+  display: block;
+  margin-top: 6px;
+}
+
 /* Navigation */
 .nav {
   display: flex;
@@ -175,6 +182,14 @@ body {
   gap: var(--space-sm);
   font-size: 0.875rem;
   color: var(--text-secondary);
+}
+
+.status-bot {
+  height: 56px;
+  width: auto;
+  display: block;
+  position: fixed;
+  top: 13px;
 }
 
 .status-dot {
@@ -420,10 +435,11 @@ body {
 }
 
 .empty-icon-small {
-  font-size: 2rem;
+  width: 48px;
+  height: 48px;
   display: block;
-  margin-bottom: var(--space-sm);
-  opacity: 0.5;
+  margin: 0 auto var(--space-sm);
+  opacity: 0.7;
 }
 
 .empty-state-small p {
@@ -558,6 +574,19 @@ textarea {
   min-height: 100px;
 }
 
+.prompt-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-xs);
+}
+
+.prompt-tip {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .char-count {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -618,6 +647,18 @@ textarea {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
 .btn-danger {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
@@ -657,10 +698,11 @@ textarea {
 }
 
 .empty-icon {
-  font-size: 3rem;
+  width: 64px;
+  height: 64px;
   display: block;
-  margin-bottom: var(--space-md);
-  opacity: 0.5;
+  margin: 0 auto var(--space-md);
+  opacity: 0.7;
 }
 
 /* Loading State */
@@ -732,10 +774,10 @@ textarea {
   object-fit: contain;
 }
 
-.btn-download-corner {
+.btn-download-corner,
+.btn-copy-corner {
   position: absolute;
   top: var(--space-sm);
-  right: var(--space-sm);
   width: 36px;
   height: 36px;
   border-radius: var(--radius-full);
@@ -751,7 +793,16 @@ textarea {
   z-index: 10;
 }
 
-.btn-download-corner:hover {
+.btn-download-corner {
+  right: var(--space-sm);
+}
+
+.btn-copy-corner {
+  right: calc(var(--space-sm) + 44px);
+}
+
+.btn-download-corner:hover,
+.btn-copy-corner:hover {
   background: var(--accent-primary);
   transform: scale(1.1);
 }
@@ -875,9 +926,11 @@ code {
 }
 
 .dropzone-icon {
-  font-size: 2rem;
+  width: 48px;
+  height: 48px;
   display: block;
-  margin-bottom: var(--space-sm);
+  margin: 0 auto var(--space-sm);
+  opacity: 0.7;
 }
 
 .dropzone-hint {
@@ -1154,71 +1207,88 @@ code {
 }
 
 /* =============================================================================
-   Combined Prompt Builder Component
+   Input Split Layout (User Mode)
    ============================================================================= */
 
-.prompt-builder {
+.input-split-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+  min-height: 200px;
+}
+
+.input-left {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  position: relative;
+  gap: var(--space-lg);
 }
 
-.prompt-label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  padding: var(--space-xs) 0;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-.prompt-label:empty {
-  display: none;
-}
-
-.prompt-label-pre {
-  /* Title style above textarea */
-}
-
-.prompt-label-post {
-  /* Title style below textarea */
-}
-
-/* Textarea keeps its normal border radius with title-style labels */
-
-.prompt-builder textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.prompt-builder-footer {
+.input-right {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-md);
-  margin-top: var(--space-xs);
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
 }
 
-.combined-prompt-preview {
-  flex: 1;
+.prompt-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Restatement Preview */
+.restatement-preview {
+  font-size: 2.5rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  word-break: break-word;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.restatement-part {
+  /* Inline display for continuous text flow */
+}
+
+.restatement-pre,
+.restatement-post {
+  color: var(--text-muted);
+}
+
+.restatement-user {
+  color: #fff;
+}
+
+/* Placeholder styling for "..." when no user input */
+.restatement-user.is-placeholder {
+  color: #fff;
+}
+
+/* Generate button row with disclaimer */
+.generate-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.generate-disclaimer {
   font-size: 0.75rem;
   color: var(--text-muted);
   font-style: italic;
-  line-height: 1.4;
-  max-height: 2.8em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
-.combined-prompt-preview:empty::before {
-  content: 'Combined prompt will appear here';
-  color: var(--text-muted);
-  opacity: 0.5;
+@media (max-width: 1024px) {
+  .input-split-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .input-right {
+    min-height: 120px;
+  }
 }
 
 /* Utilities */
@@ -1260,4 +1330,85 @@ code {
   .main {
     padding: var(--space-md);
   }
+}
+
+/* =============================================================================
+   Modal Dialog
+   ============================================================================= */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal-dialog {
+  background: var(--bg-secondary);
+  border: var(--border-light);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideIn 0.2s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  padding: var(--space-lg);
+  border-bottom: var(--border-subtle);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: var(--space-lg);
+}
+
+.modal-body p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border-top: var(--border-subtle);
+}
+
+.modal-footer .btn-danger {
+  background: var(--danger);
+  color: white;
+  border: none;
+}
+
+.modal-footer .btn-danger:hover {
+  background: #dc2626;
 }
