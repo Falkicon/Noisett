@@ -10,7 +10,9 @@
     "update:pip": "python scripts/update_packages.py",
     "contracts:compile": "tsp compile contracts/main.tsp",
     "contracts:types": "openapi-typescript contracts/contracts/generated/openapi.yaml -o contracts/generated/types.ts",
-    "contracts:generate": "npm run contracts:compile && npm run contracts:types"
+    "contracts:python": "datamodel-codegen --input contracts/contracts/generated/openapi.yaml --output contracts/generated/python --output-model-type pydantic_v2.BaseModel --use-annotated",
+    "contracts:generate": "npm run contracts:compile && npm run contracts:types && npm run contracts:python",
+    "contracts:check": "npm run contracts:generate && git diff --exit-code contracts/generated/"
   },
   "dependencies": {
     "convex": "^1.31.4"
