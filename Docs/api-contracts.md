@@ -3,6 +3,32 @@
 > **AFD Principle**: This document is the single source of truth for API interfaces.
 > Agents should reference this before making API calls. Tests validate these contracts.
 
+## TypeSpec: The Source of Truth
+
+All API schemas are now defined in **TypeSpec** files in `contracts/`:
+
+```
+contracts/
+├── main.tsp              # Entry point
+├── models/
+│   ├── common.tsp        # Shared types (ConvexId, StorageId, Timestamp)
+│   ├── asset-type.tsp    # AssetType, CreateRequest, UpdateRequest
+│   ├── lora.tsp          # Lora, LoraStatus enum, LoraCreateRequest
+│   ├── job.tsp           # Job, JobStatus enum, QualityPreset enum
+│   └── generation.tsp    # GenerateRequest, GenerateResponse
+└── generated/
+    ├── openapi.yaml      # OpenAPI 3.0 spec (auto-generated)
+    ├── types.ts          # TypeScript types (auto-generated)
+    └── python/Models.py  # Python Pydantic models (auto-generated)
+```
+
+**Regenerate after changing .tsp files:**
+```bash
+npm run contracts:generate
+```
+
+---
+
 ## Quick Reference
 
 | Domain | Endpoint Pattern | Backend |
