@@ -115,7 +115,7 @@ export const create = internalMutation({
     postPrompt: v.string(),
     model: v.string(),                    // "replicate:flux-dev-lora"
     modelSettings: v.any(),               // Model-specific params
-    loraId: v.optional(v.id("loras")),
+    loraId: v.optional(v.union(v.id("loras"), v.null())),  // null means no LoRA
     qualityPreset: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),

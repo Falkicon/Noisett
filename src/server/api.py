@@ -823,6 +823,79 @@ async def start_lora_training(lora_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/lora/{lora_id}/sync")
+async def sync_lora_training_status(lora_id: str):
+    """Sync LoRA training status from Replicate.
+    
+    For local dev where webhooks don't work, this polls Replicate
+    for the training status and updates Convex accordingly.
+    """
+    import replicate
+    
+    try:
+        convex = get_convex_client()
+        
+        # Get LoRA from Convex
+        lora = await convex.get_lora(lora_id)
+        if not lora:
+            raise HTTPException(status_code=404, detail="LoRA not found")
+        
+        training_id = lora.get("replicateTrainingId")
+        if not training_id:
+            return {"success": False, "error": {"message": "No training ID found"}}
+        
+        # Get training status from Replicate
+        try:
+            training = await replicate.trainings.async_get(training_id)
+        except Exception as e:
+            return {"success": False, "error": {"message": f"Failed to get training: {e}"}}
+        
+        # Map Replicate status to our status
+        status_map = {
+            "starting": "training",
+            "processing": "training", 
+            "succeeded": "completed",
+            "failed": "failed",
+            "canceled": "failed",
+        }
+        
+        new_status = status_map.get(training.status, "training")
+        
+        # Build update payload
+        update_data = {"status": new_status}
+        
+        # If completed, save the weights URL and activate the LoRA
+        if training.status == "succeeded" and training.output:
+            # training.output contains the weights URL
+            weights_url = training.output.get("weights") if isinstance(training.output, dict) else str(training.output)
+            if weights_url:
+                update_data["loraUrl"] = weights_url
+            update_data["isActive"] = True  # Make LoRA available for generation
+        
+        # If failed, save error message
+        if training.status in ["failed", "canceled"]:
+            update_data["errorMessage"] = training.error or "Training failed"
+        
+        # Update Convex
+        await convex.update_lora(lora_id, update_data)
+        
+        return {
+            "success": True,
+            "data": {
+                "lora_id": lora_id,
+                "replicate_status": training.status,
+                "new_status": new_status,
+                "lora_url": update_data.get("loraUrl"),
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to sync training status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Model Endpoints ---
 
 

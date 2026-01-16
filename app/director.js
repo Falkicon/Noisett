@@ -510,6 +510,7 @@ function setupLoraManagement() {
 
   // Actions
   $('#lora-train-btn').addEventListener('click', startTraining);
+  $('#lora-sync-btn').addEventListener('click', syncStatus);
   $('#lora-delete-btn').addEventListener('click', deleteLora);
 }
 
@@ -758,6 +759,12 @@ async function refreshSelectedLora(loraId) {
   const updatedLora = await API.getLora(loraId);
   if (updatedLora.success) {
     state.selectedLora = updatedLora.data;
+    // Also update the LoRA in the list
+    const idx = state.loras.findIndex(l => l._id === loraId);
+    if (idx >= 0) {
+      state.loras[idx] = updatedLora.data;
+    }
+    renderLoraList();
     showLoraDetail();
   } else {
     console.error('Failed to refresh LoRA:', updatedLora.error?.message);
@@ -798,6 +805,33 @@ async function startTrainingCore(loraId) {
   } catch (err) {
     console.error('Training error:', err);
     showError('Training Failed', err.message || 'Unknown error');
+  }
+}
+
+async function syncStatus() {
+  if (!state.selectedLora) return;
+  
+  const btn = $('#lora-sync-btn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Syncing...';
+  btn.disabled = true;
+  
+  try {
+    const result = await API.request('POST', `/api/lora/${state.selectedLora._id}/sync`);
+    
+    if (result.success) {
+      alert(`Status synced!\n\nReplicate status: ${result.data.replicate_status}\nNew status: ${result.data.new_status}${result.data.weights_url ? '\n\nWeights URL saved!' : ''}`);
+      // Refresh LoRA to show updated status
+      await refreshSelectedLora(state.selectedLora._id);
+    } else {
+      showError('Sync Failed', result.error?.message || 'Unknown error');
+    }
+  } catch (err) {
+    console.error('Sync error:', err);
+    showError('Sync Failed', err.message || 'Unknown error');
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
 
