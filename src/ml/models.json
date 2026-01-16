@@ -19,12 +19,15 @@
     "replicateModel": "black-forest-labs/flux-2-max",
     "capabilities": {
       "supportsLora": false,
-      "maxImages": 4
+      "maxImages": 4,
+      "supportsInputImages": true
     },
     "settings": [
-      {"key": "num_inference_steps", "label": "Steps", "type": "range", "min": 10, "max": 50, "default": 28},
-      {"key": "guidance_scale", "label": "Guidance", "type": "range", "min": 1, "max": 10, "step": 0.5, "default": 3.5},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4"], "default": "1:1"}
+      {"key": "resolution", "label": "Resolution", "type": "select", "options": ["0.25 MP", "0.5 MP", "1 MP", "2 MP", "4 MP"], "default": "1 MP"},
+      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "custom"], "default": "1:1"},
+      {"key": "safety_tolerance", "label": "Safety Tolerance", "type": "range", "min": 1, "max": 5, "default": 2},
+      {"key": "output_format", "label": "Output Format", "type": "select", "options": ["webp", "jpg", "png"], "default": "webp"},
+      {"key": "output_quality", "label": "Output Quality", "type": "range", "min": 0, "max": 100, "default": 80}
     ]
   },
   "replicate:nano-banana-pro": {

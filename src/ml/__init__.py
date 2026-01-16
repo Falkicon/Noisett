@@ -481,14 +481,15 @@ class ReplicateGenerator(ImageGenerator):
             }
 
         # FLUX.2 [max] - different from FLUX.1 dev-lora
-        # Params: prompt, input_images[], aspect_ratio, resolution (0.5 MP/1 MP/2 MP/4 MP), seed, output_format
+        # Params: prompt, input_images[], aspect_ratio, resolution, safety_tolerance, seed, output_format
         if "flux-2" in model_lower or "flux.2" in model_lower:
             resolution_map = {"draft": "1 MP", "standard": "2 MP", "high": "4 MP"}
             return {
                 "prompt": prompt,
                 "aspect_ratio": "1:1",
                 "resolution": resolution_map.get(quality.value, "2 MP"),
-                "output_format": "png",
+                "safety_tolerance": 2,  # 1=strict, 5=permissive
+                "output_format": "webp",
                 "output_quality": output_quality,
                 "seed": seed,
             }
@@ -724,7 +725,8 @@ class ReplicateGenerator(ImageGenerator):
                     "input_images": reference_urls,
                     "aspect_ratio": "1:1",
                     "resolution": resolution_map.get(quality.value, "2 MP"),
-                    "output_format": "png",
+                    "safety_tolerance": 2,  # 1=strict, 5=permissive
+                    "output_format": "webp",
                     "output_quality": output_quality,
                     "seed": seed,
                 }
