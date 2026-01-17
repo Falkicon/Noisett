@@ -16,6 +16,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.9.5] - 2026-01-16
+
+### Added
+
+- **Drag-and-Drop Asset Type Sorting** — Reorder asset types in Director mode
+  - SortableJS integration with drag handles (⠿)
+  - New `sortOrder` field in Convex schema with index
+  - `updateSortOrder` mutation for batch updates
+  - HTTP endpoint `/api/asset-types/update-sort-order`
+  - Visual feedback: ghost and chosen states during drag
+
+- **Toast Notifications** — Visual feedback for save operations
+  - "Changes saved!" / "Asset Type created!" messages
+  - Auto-dismiss after 2.5 seconds with fade animation
+  - Success and error styling variants
+
+### Changed
+
+- **Director Selection Model** — Improved editor behavior
+  - First asset type auto-selected on page load
+  - Stays on current item after save (no longer returns to empty state)
+  - Same behavior for LoRA tab
+
+- **Aspect Ratio Settings** — All models now respect modelSettings
+  - Fixed Nano Banana Pro, Recraft, Qwen, FLUX.1 (default) to read from settings
+  - Previously hardcoded to 1:1, now respects Director configuration
+
+- **Nano Banana Pro Options** — Expanded aspect ratio choices
+  - Added: 4:5, 5:4, 21:9, match_input_image
+  - Full list: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, match_input_image
+
+- **Empty State Icons** — Replaced all emoji icons with `ill-image.png`
+  - Director asset type list, LoRA list, main panel empty states
+
+### Fixed
+
+- **Save Button Feedback** — Button shows "Saving..." during save operation
+
+---
+
 ## [0.9.4] - 2026-01-16
 
 ### Added

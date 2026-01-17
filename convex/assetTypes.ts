@@ -150,8 +150,13 @@ export const list = internalQuery({
 
     const results = await query.collect();
 
-    // Sort by createdAt descending (newest first)
-    return results.sort((a, b) => b.createdAt - a.createdAt);
+    // Sort by sortOrder (lower = first), then by createdAt descending
+    return results.sort((a, b) => {
+      const orderA = a.sortOrder ?? 9999;
+      const orderB = b.sortOrder ?? 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return b.createdAt - a.createdAt;
+    });
   },
 });
 
@@ -242,6 +247,24 @@ export const reorderReferenceImages = internalMutation({
       referenceImages: args.storageIds,
     });
     return { reordered: true, count: args.storageIds.length };
+  },
+});
+
+// Update sort order for multiple Asset Types (for drag-and-drop reordering)
+export const updateSortOrder = internalMutation({
+  args: {
+    updates: v.array(
+      v.object({
+        id: v.id("assetTypes"),
+        sortOrder: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const { id, sortOrder } of args.updates) {
+      await ctx.db.patch(id, { sortOrder });
+    }
+    return { updated: args.updates.length };
   },
 });
 

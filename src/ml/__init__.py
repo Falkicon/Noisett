@@ -472,12 +472,22 @@ class ReplicateGenerator(ImageGenerator):
         # Google Nano Banana Pro
         # Params: prompt, image_input[], aspect_ratio, resolution (1K/2K/4K), output_format
         if "nano-banana" in model_lower:
+            # Get modelSettings from asset type (passed via model_config._modelSettings)
+            model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+            
+            # Default resolution based on quality, but allow override from settings
             resolution_map = {"draft": "1K", "standard": "2K", "high": "4K"}
+            resolution = model_settings.get("resolution", resolution_map.get(quality.value, "2K"))
+            aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+            output_format = model_settings.get("output_format", "png")
+            
+            print(f"[NANO-BANANA] modelSettings: resolution={resolution}, aspect_ratio={aspect_ratio}")
+            
             return {
                 "prompt": prompt,
-                "aspect_ratio": "1:1",
-                "resolution": resolution_map.get(quality.value, "2K"),
-                "output_format": "png",
+                "aspect_ratio": aspect_ratio,
+                "resolution": resolution,
+                "output_format": output_format,
             }
 
         # FLUX.2 [max] - different from FLUX.1 dev-lora
@@ -508,10 +518,12 @@ class ReplicateGenerator(ImageGenerator):
         # Recraft V3 SVG - specialized for vector graphics
         # Params: prompt, aspect_ratio, size, style (any/engraving/line_art/line_circuit/linocut)
         if "recraft" in model_lower:
+            model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+            aspect_ratio = model_settings.get("aspect_ratio", "1:1")
             return {
                 "prompt": prompt,
                 "style": "any",  # Let the model decide best style
-                "aspect_ratio": "1:1",
+                "aspect_ratio": aspect_ratio,
                 "size": "1024x1024",
             }
 
@@ -548,10 +560,12 @@ class ReplicateGenerator(ImageGenerator):
         # Qwen Image
         # Params: prompt, seed, go_fast, guidance, image_size, aspect_ratio, output_format, num_inference_steps
         if "qwen" in model_lower:
+            model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+            aspect_ratio = model_settings.get("aspect_ratio", "1:1")
             image_size = "optimize_for_speed" if quality.value == "draft" else "optimize_for_quality"
             return {
                 "prompt": prompt,
-                "aspect_ratio": "1:1",
+                "aspect_ratio": aspect_ratio,
                 "image_size": image_size,
                 "guidance": 3.0,
                 "num_inference_steps": num_steps,
@@ -581,12 +595,16 @@ class ReplicateGenerator(ImageGenerator):
 
         # Default: FLUX.1 [dev] LoRA style parameters
         # Params: prompt, aspect_ratio, num_outputs, num_inference_steps, guidance, seed, output_format, go_fast, megapixels
+        model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+        aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+        num_inference_steps = model_settings.get("num_inference_steps", num_steps)
+        guidance = model_settings.get("guidance_scale", 3.0)
         return {
             "prompt": prompt,
-            "aspect_ratio": "1:1",
+            "aspect_ratio": aspect_ratio,
             "num_outputs": 1,
-            "num_inference_steps": num_steps,
-            "guidance": 3.0,
+            "num_inference_steps": num_inference_steps,
+            "guidance": guidance,
             "megapixels": "1",
             "output_format": "png",
             "output_quality": output_quality,
@@ -740,13 +758,22 @@ class ReplicateGenerator(ImageGenerator):
 
             # Nano Banana Pro - uses image_input for reference images
             if "nano-banana" in model_lower:
+                # Get modelSettings from asset type (passed via model_config._modelSettings)
+                model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+                
                 resolution_map = {"draft": "1K", "standard": "2K", "high": "4K"}
+                resolution = model_settings.get("resolution", resolution_map.get(quality.value, "2K"))
+                aspect_ratio = model_settings.get("aspect_ratio", "1:1")
+                output_format = model_settings.get("output_format", "png")
+                
+                print(f"[NANO-BANANA+REF] modelSettings: resolution={resolution}, aspect_ratio={aspect_ratio}")
+                
                 input_params = {
                     "prompt": enhanced_prompt,
                     "image_input": reference_urls,  # Nano Banana Pro uses image_input
-                    "aspect_ratio": "1:1",
-                    "resolution": resolution_map.get(quality.value, "2K"),
-                    "output_format": "png",  # Only jpg or png supported
+                    "aspect_ratio": aspect_ratio,
+                    "resolution": resolution,
+                    "output_format": output_format,
                 }
             # FLUX.2 [max] - uses input_images
             elif "flux-2" in model_lower or "flux.2" in model_lower:
@@ -799,6 +826,8 @@ class ReplicateGenerator(ImageGenerator):
                     input_params["height"] = height
             # Default: FLUX-style parameters
             else:
+                model_settings = model_config.get("_modelSettings", {}) if model_config else {}
+                aspect_ratio = model_settings.get("aspect_ratio", "1:1")
                 input_params = {
                     "prompt": enhanced_prompt,
                     "input_images": reference_urls,
@@ -806,7 +835,7 @@ class ReplicateGenerator(ImageGenerator):
                     "guidance": 3.5,
                     "megapixels": "1",
                     "num_outputs": 1,
-                    "aspect_ratio": "1:1",
+                    "aspect_ratio": aspect_ratio,
                     "output_format": "png",
                     "output_quality": output_quality,
                     "num_inference_steps": num_steps,

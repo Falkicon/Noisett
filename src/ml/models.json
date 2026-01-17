@@ -42,21 +42,7 @@
     "settings": [
       {"key": "resolution", "label": "Resolution", "type": "select", "options": ["1K", "2K", "4K"], "default": "2K"},
       {"key": "output_format", "label": "Output Format", "type": "select", "options": ["jpg", "png"], "default": "png"},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "default": "1:1"}
-    ]
-  },
-  "replicate:recraft-v3-svg": {
-    "name": "Recraft V3 SVG",
-    "provider": "replicate",
-    "replicateModel": "recraft-ai/recraft-v3-svg",
-    "capabilities": {
-      "supportsLora": false,
-      "maxImages": 4,
-      "outputFormat": "svg"
-    },
-    "settings": [
-      {"key": "style", "label": "Style", "type": "select", "options": ["any", "realistic_image", "digital_illustration", "vector_illustration", "icon"], "default": "vector_illustration"},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4"], "default": "1:1"}
+      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "match_input_image"], "default": "1:1"}
     ]
   },
   "replicate:seedream-4.5": {
@@ -71,48 +57,6 @@
     "settings": [
       {"key": "size", "label": "Size", "type": "select", "options": ["2K", "4K"], "default": "2K"},
       {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "default": "1:1"}
-    ]
-  },
-  "replicate:qwen-image": {
-    "name": "Qwen Image",
-    "provider": "replicate",
-    "replicateModel": "qwen/qwen-image",
-    "capabilities": {
-      "supportsLora": false,
-      "maxImages": 4
-    },
-    "settings": [
-      {"key": "num_inference_steps", "label": "Steps", "type": "range", "min": 10, "max": 50, "default": 25},
-      {"key": "guidance_scale", "label": "Guidance", "type": "range", "min": 1, "max": 15, "step": 0.5, "default": 7},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16"], "default": "1:1"}
-    ]
-  },
-  "replicate:hidream-l1-full": {
-    "name": "HiDream L1 Full",
-    "provider": "replicate",
-    "replicateModel": "prunaai/hidream-l1-full:03d58532fd29e39fd2ed80e86c3da1cebec28ef2734081cf1366710d30388f42",
-    "capabilities": {
-      "supportsLora": false,
-      "maxImages": 4
-    },
-    "settings": [
-      {"key": "num_inference_steps", "label": "Steps", "type": "range", "min": 10, "max": 50, "default": 28},
-      {"key": "guidance_scale", "label": "Guidance", "type": "range", "min": 1, "max": 10, "step": 0.5, "default": 5},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4"], "default": "1:1"}
-    ]
-  },
-  "replicate:hidream-l1-dev": {
-    "name": "HiDream L1 Dev",
-    "provider": "replicate",
-    "replicateModel": "prunaai/hidream-l1-dev:4dfcd146c0def4812455415f55556f6bc84025dcb15193cf1977f01bd384d191",
-    "capabilities": {
-      "supportsLora": false,
-      "maxImages": 4
-    },
-    "settings": [
-      {"key": "num_inference_steps", "label": "Steps", "type": "range", "min": 10, "max": 50, "default": 28},
-      {"key": "guidance_scale", "label": "Guidance", "type": "range", "min": 1, "max": 10, "step": 0.5, "default": 5},
-      {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "options": ["1:1", "16:9", "9:16", "4:3", "3:4"], "default": "1:1"}
     ]
   }
 }

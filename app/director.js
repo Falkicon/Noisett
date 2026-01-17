@@ -19,6 +19,27 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
+// Toast notification system
+function showToast(message, type = 'success') {
+  // Remove existing toast
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Trigger animation
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  // Auto-hide after 2.5s
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
 /**
  * Shared dropzone utility - sets up drag/drop and file input handling
  * @param {string} dropzoneSelector - Selector for dropzone element
@@ -149,6 +170,11 @@ async function loadLoras() {
   }
   populateLoraSelector();
   renderLoraList();
+
+  // Auto-select first LoRA if none selected and we're on loras tab
+  if (!state.selectedLora && state.loras.length > 0 && state.activeSidebarTab === 'loras') {
+    selectLora(state.loras[0]._id);
+  }
 }
 
 async function loadAssetTypes() {
@@ -161,6 +187,11 @@ async function loadAssetTypes() {
     state.assetTypes = [];
   }
   renderAssetTypeList();
+
+  // Auto-select first asset type if none selected and we're on asset-types tab
+  if (!state.selectedAssetType && state.assetTypes.length > 0 && state.activeSidebarTab === 'asset-types') {
+    selectAssetType(state.assetTypes[0]._id);
+  }
 }
 
 // === Render Lists ===
@@ -168,13 +199,14 @@ function renderAssetTypeList() {
   const list = $('#asset-type-list');
 
   if (state.assetTypes.length === 0) {
-    list.innerHTML = '<div class="empty-state"><span class="empty-icon">📦</span><p>No asset types yet</p></div>';
+    list.innerHTML = '<div class="empty-state"><img src="ill-image.png" alt="" class="empty-icon"><p>No asset types yet</p></div>';
     return;
   }
 
   // Convex returns asset types with '_id' field
   list.innerHTML = state.assetTypes.map((at) => `
     <div class="asset-type-item ${state.selectedAssetType?._id === at._id ? 'active' : ''}" data-id="${at._id}">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
       <div class="asset-type-item-info">
         <div class="asset-type-item-name">${escapeHtml(at.name)}</div>
         <div class="asset-type-item-model">${escapeHtml(at.description || '')}</div>
@@ -183,8 +215,55 @@ function renderAssetTypeList() {
     </div>
   `).join('');
 
+  // Add click handlers (clicking anywhere except drag handle selects)
   $$('.asset-type-item').forEach((item) => {
-    item.addEventListener('click', () => selectAssetType(item.dataset.id));
+    item.addEventListener('click', (e) => {
+      if (!e.target.closest('.drag-handle')) {
+        selectAssetType(item.dataset.id);
+      }
+    });
+  });
+
+  // Initialize SortableJS for drag-and-drop reordering
+  initAssetTypeSortable();
+}
+
+// Initialize SortableJS for asset type list
+let assetTypeSortable = null;
+
+function initAssetTypeSortable() {
+  const list = $('#asset-type-list');
+  if (!list || typeof Sortable === 'undefined') return;
+
+  // Destroy previous instance if exists
+  if (assetTypeSortable) {
+    assetTypeSortable.destroy();
+  }
+
+  assetTypeSortable = new Sortable(list, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: async (evt) => {
+      // Get new order of IDs
+      const items = [...list.querySelectorAll('.asset-type-item')];
+      const updates = items.map((item, index) => ({
+        id: item.dataset.id,
+        sortOrder: index,
+      }));
+
+      // Update local state to match new order
+      state.assetTypes = updates.map(u => state.assetTypes.find(at => at._id === u.id));
+
+      // Persist to Convex
+      const result = await API.request('POST', '/api/asset-types/update-sort-order', { updates });
+      if (!result.success) {
+        console.error('Failed to update sort order:', result.error?.message);
+        // Reload to reset order on failure
+        await loadAssetTypes();
+      }
+    },
   });
 }
 
@@ -192,7 +271,7 @@ function renderLoraList() {
   const list = $('#lora-list');
 
   if (state.loras.length === 0) {
-    list.innerHTML = '<div class="empty-state"><span class="empty-icon">🎨</span><p>No LoRAs yet</p></div>';
+    list.innerHTML = '<div class="empty-state"><img src="ill-image.png" alt="" class="empty-icon"><p>No LoRAs yet</p></div>';
     return;
   }
 
@@ -456,21 +535,40 @@ async function saveAssetType() {
     return;
   }
 
+  const saveBtn = $('#save-asset-type-btn');
+  const originalText = saveBtn.textContent;
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+
   const data = collectAssetTypeFormData(name);
 
   let result;
+  let savedId;
   if (state.isCreating) {
     result = await API.request('POST', '/api/asset-types/create', data);
+    savedId = result.data?.id; // New item ID from create response
   } else {
     result = await API.request('POST', '/api/asset-types/update', {
       id: state.selectedAssetType._id,
       ...data,
     });
+    savedId = state.selectedAssetType._id; // Keep current ID
   }
 
+  saveBtn.disabled = false;
+  saveBtn.textContent = originalText;
+
   if (result.success) {
+    showToast(state.isCreating ? 'Asset Type created!' : 'Changes saved!');
     await loadAssetTypes();
-    hideEditor();
+    // Stay on the saved item instead of hiding editor
+    if (savedId) {
+      selectAssetType(savedId);
+    } else if (state.assetTypes.length > 0) {
+      selectAssetType(state.assetTypes[0]._id);
+    } else {
+      hideEditor();
+    }
   } else {
     showError('Failed to save', result.error?.message || 'Unknown error');
   }

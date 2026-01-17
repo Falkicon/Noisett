@@ -84,6 +84,12 @@ http.route({
 });
 
 http.route({
+  path: "/api/asset-types/update-sort-order",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+});
+
+http.route({
   path: "/api/generations/list",
   method: "OPTIONS",
   handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
@@ -245,6 +251,22 @@ http.route({
     const result = await ctx.runMutation(internal.assetTypes.reorderReferenceImages, {
       id: body.id,
       storageIds: body.storageIds,
+    });
+    return jsonResponse(result);
+  }),
+});
+
+// Update Asset Type sort order (for drag-and-drop reordering)
+http.route({
+  path: "/api/asset-types/update-sort-order",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    if (!body.updates || !Array.isArray(body.updates)) {
+      return jsonResponse({ error: "updates array required" }, 400);
+    }
+    const result = await ctx.runMutation(internal.assetTypes.updateSortOrder, {
+      updates: body.updates,
     });
     return jsonResponse(result);
   }),

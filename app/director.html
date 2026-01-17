@@ -74,6 +74,24 @@
       transition: all var(--transition-fast);
     }
 
+    .asset-type-item .drag-handle {
+      cursor: grab;
+      color: var(--text-muted);
+      padding: 0 var(--space-sm) 0 0;
+      font-size: 1.25rem;
+      user-select: none;
+    }
+
+    .asset-type-item.sortable-ghost {
+      opacity: 0.4;
+      background: var(--accent-primary);
+    }
+
+    .asset-type-item.sortable-chosen {
+      background: var(--bg-elevated);
+      border-color: var(--accent-primary);
+    }
+
     .asset-type-item:hover,
     .asset-type-item.active {
       background: var(--bg-elevated);
@@ -271,6 +289,36 @@
         max-height: 300px;
       }
     }
+
+    /* Toast notifications */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 24px;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 500;
+      z-index: 1000;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .toast-error {
+      background: var(--danger);
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -323,7 +371,7 @@
         <div class="main-panel panel">
           <!-- Empty State -->
           <div id="editor-empty" class="empty-state">
-            <span class="empty-icon">📝</span>
+            <img src="ill-image.png" alt="" class="empty-icon">
             <p>Select an Asset Type to edit or create a new one</p>
           </div>
 
@@ -461,7 +509,7 @@
           <div id="lora-editor-panel" class="editor-panel hidden">
             <!-- LoRA Empty State -->
             <div id="lora-empty" class="empty-state">
-              <span class="empty-icon">🎨</span>
+              <img src="ill-image.png" alt="" class="empty-icon">
               <p>Select a LoRA or create a new one</p>
             </div>
 
@@ -571,6 +619,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="api.js"></script>
   <script src="director.js"></script>
 </body>

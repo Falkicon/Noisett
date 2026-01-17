@@ -37,14 +37,21 @@ DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 
 # --- Request/Response Models ---
+# Import TypeSpec-generated types for API contract consistency
+from contracts.generated import GenerateRequest as ContractGenerateRequest
 
 
+# Re-export with field name mapping (TypeSpec uses imageCount, API uses count)
 class GenerateRequest(BaseModel):
-    """Request body for image generation."""
+    """Request body for image generation.
+    
+    Maps to TypeSpec-generated GenerateRequest, with field name compatibility.
+    See: contracts/models/generation.tsp
+    """
 
-    prompt: str = Field(..., min_length=1, max_length=500, description="Image description")
+    prompt: str = Field(..., min_length=1, max_length=2000, description="Image description")
     asset_type: str = Field(default="product", description="Type of asset to generate")
-    model: str = Field(default="hidream", description="Model to use")
+    model: str | None = Field(default=None, description="Model to use (e.g., 'replicate:flux-2-max')")
     quality: str = Field(default="standard", description="Quality preset (deprecated - use modelSettings)")
     count: int = Field(default=1, ge=1, le=4, description="Number of variations")
     lora: str | None = Field(default=None, description="LoRA ID to use for styled generation")
@@ -312,13 +319,14 @@ app = FastAPI(
 
 # CORS configuration
 # Read allowed origins from environment or use defaults
+# Note: Figma plugin iframe sends 'null' origin, so we allow all in dev
 CORS_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000"
+    "*"  # Allow all origins by default for development
 ).split(",")
 
-# In development, allow all origins if explicitly set
-if os.getenv("CORS_ALLOW_ALL", "false").lower() == "true":
+# Check if explicitly allowing all origins
+if "*" in CORS_ORIGINS or os.getenv("CORS_ALLOW_ALL", "false").lower() == "true":
     CORS_ORIGINS = ["*"]
 
 app.add_middleware(
@@ -444,10 +452,13 @@ async def generate_asset(request: GenerateRequest, background_tasks: BackgroundT
     from src.commands.asset import AssetGenerateInput, generate
 
     try:
+        # Apply default model if not specified (matching TypeSpec optional field)
+        model = request.model or "hidream"
+        
         input_data = AssetGenerateInput(
             prompt=request.prompt,
             asset_type=AssetType(request.asset_type),
-            model=request.model,  # Pass model string directly (supports models.json IDs)
+            model=model,  # Pass model string directly (supports models.json IDs)
             quality=QualityPreset(request.quality),
             count=request.count,
             lora=request.lora,
@@ -516,6 +527,20 @@ async def delete_asset_type(id: str):
         return {"success": True}
     except Exception as e:
         logging.error(f"Failed to delete asset type: {e}")
+        return {"success": False, "error": {"message": str(e)}}
+
+
+@app.post("/api/asset-types/update-sort-order")
+async def update_asset_type_sort_order(request: Request):
+    """Update sort order for asset types (for drag-and-drop reordering)."""
+    try:
+        from src.core.convex_client import get_convex_client
+        convex = get_convex_client()
+        body = await request.json()
+        result = await convex._make_request("POST", "/api/asset-types/update-sort-order", data=body)
+        return result
+    except Exception as e:
+        logging.error(f"Failed to update asset type sort order: {e}")
         return {"success": False, "error": {"message": str(e)}}
 
 

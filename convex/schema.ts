@@ -72,9 +72,11 @@ export default defineSchema({
     referenceImages: v.optional(v.array(v.id("_storage"))),  // Reference images for models that support them
     qualityPreset: v.optional(v.string()),
     isActive: v.boolean(),
+    sortOrder: v.optional(v.number()),    // Lower = higher priority in lists
     createdAt: v.number(),
   }).index("by_active", ["isActive"])
-    .index("by_slug", ["slug"]),
+    .index("by_slug", ["slug"])
+    .index("by_sort_order", ["sortOrder"]),
 
   generations: defineTable({
     assetTypeId: v.id("assetTypes"),
